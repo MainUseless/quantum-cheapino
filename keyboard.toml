@@ -5,10 +5,6 @@ product_id = 0x0001
 vendor_id = 0x4B42 # "KB" in hex
 manufacturer = "Custom"
 chip = "esp32c3"
-usb_enabled = false
-
-[ble]
-enabled = true
 
 [backend]
 # Left empty for single-chip matrix configuration
