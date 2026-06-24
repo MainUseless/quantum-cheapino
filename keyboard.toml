@@ -7,16 +7,15 @@ manufacturer = "Custom"
 chip = "esp32c3"
 
 [backend]
-# Rows (6 total: 3 for Left side, 3 for Right side)
-row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
-# Columns (6 total: 3 for Left side, 3 for Right side via RJ45)
-col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
+# Left empty for now as pins have moved to the matrix block
 
-# Changed from [layout] to [matrix] for RMK compliance
 [matrix]
 rows = 6
 cols = 6
 layers = 3
+# Moved row_pins and col_pins inside [matrix] for standard layouts
+row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
+col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
 
 # String mapping of the electronic matrix to physical keys
 matrix_map = """
