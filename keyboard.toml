@@ -8,17 +8,18 @@ chip = "esp32c3"
 
 [backend]
 # Left empty for single-chip matrix configuration
-
 [matrix]
 rows = 6
 cols = 6
 matrix_type = "direct_pin"
-# Combine all your GPIO pins into a single flat list:
 direct_pins = [
     ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"],
-    ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
+    ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"],
+    ["no_pin", "no_pin", "no_pin", "no_pin", "no_pin", "no_pin"],
+    ["no_pin", "no_pin", "no_pin", "no_pin", "no_pin", "no_pin"],
+    ["no_pin", "no_pin", "no_pin", "no_pin", "no_pin", "no_pin"],
+    ["no_pin", "no_pin", "no_pin", "no_pin", "no_pin", "no_pin"]
 ]
-
 
 [layout]
 rows = 6
