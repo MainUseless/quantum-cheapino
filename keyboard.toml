@@ -4,8 +4,7 @@ product_name = "Rust Cheapino"
 product_id = 0x0001
 vendor_id = 0x4B42 # "KB" in hex
 manufacturer = "Custom"
-chip = "esp32c3"
-board = "esp32c3" # Added to match template repository folder checks
+chip = "esp32c3" # Removed 'board' to fix the unwrap panic completely
 
 [backend]
 # Left empty for single-chip matrix configuration
@@ -13,7 +12,6 @@ board = "esp32c3" # Added to match template repository folder checks
 [matrix]
 rows = 6
 cols = 6
-# Define your physical GPIO pins here
 row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
 col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
 
