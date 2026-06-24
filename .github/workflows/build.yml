@@ -37,6 +37,8 @@ jobs:
           rmkit create --keyboard-toml-path keyboard.toml --vial-json-path vial.json --target-dir rmk
 
       - name: Compile Firmware
+        env:
+          RUST_MIN_STACK: 16777216
         run: |
           cd rmk
           cargo +nightly build --release
