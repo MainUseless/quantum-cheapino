@@ -4,7 +4,7 @@ product_name = "Rust Cheapino"
 product_id = 0x0001
 vendor_id = 0x4B42 # "KB" in hex
 manufacturer = "Custom"
-chip = "esp32-c3" # Fixed: Added the missing hyphen
+chip = "esp32c3" # Standard folder name for the rmkit template clone
 
 [backend]
 # Left empty for single-chip matrix configuration
@@ -12,7 +12,6 @@ chip = "esp32-c3" # Fixed: Added the missing hyphen
 [matrix]
 rows = 6
 cols = 6
-# Define your physical GPIO pins here
 row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
 col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
 
@@ -22,7 +21,6 @@ cols = 6
 layers = 3
 layers_num = 3
 
-# String mapping of the electronic matrix to physical keys
 matrix_map = """
 (0,0) (0,1) (0,2) (3,3) (3,4) (3,5)
 (1,0) (1,1) (1,2) (4,3) (4,4) (4,5)
@@ -32,7 +30,6 @@ matrix_map = """
 (0,5) (1,5) (2,5) (3,2) (4,2) (5,2)
 """
 
-# Base Layer (Layer 0)
 [[layer]]
 name = "base_layer"
 keys = """
@@ -42,7 +39,6 @@ Z      X      C      V      B      N      M      COMM   DOT    SLSH
 ESC    SPC    TAB                  ENT    BSPC   MO(1)
 """
 
-# Lower Layer (Layer 1) - Clear for Vial editing
 [[layer]]
 name = "lower_layer"
 keys = """
@@ -52,7 +48,6 @@ _      _      _      _      _      _      _      _      _      _
 _      _      _                    _      _      _
 """
 
-# Raise Layer (Layer 2) - Clear for Vial editing
 [[layer]]
 name = "raise_layer"
 keys = """
@@ -64,4 +59,4 @@ _      _      _                    _      _      _
 
 [vial]
 vial_enabled = true
-vial_id = [0x43, 0x68, 0x65, 0x61, 0x70, 0x69, 0x6E, 0x6F] # "Cheapino" in hex
+vial_id = [0x43, 0x68, 0x65, 0x61, 0x70, 0x69, 0x6E, 0x6F]
