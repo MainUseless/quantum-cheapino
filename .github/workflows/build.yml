@@ -11,3 +11,4 @@ jobs:
     with:
       keyboard_toml_path: "keyboard.toml"
       vial_json_path: "vial.json"
+      chip: "esp32c3" # Pass the chip target directly to the reusable workflow
