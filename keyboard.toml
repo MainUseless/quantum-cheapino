@@ -1,21 +1,3 @@
-[keyboard]
-name = "Rust Cheapino"
-product_name = "Rust Cheapino"
-product_id = 0x0001
-vendor_id = 0x4B42 # "KB" in hex
-manufacturer = "Custom"
-chip = "esp32c3"
-
-[backend]
-# Left empty for single-chip matrix configuration
-
-[matrix]
-rows = 6
-cols = 6
-# Define your physical GPIO pins here
-row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
-col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
-
 [layout]
 rows = 6
 cols = 6
@@ -32,7 +14,7 @@ matrix_map = """
 (0,5) (1,5) (2,5) (3,2) (4,2) (5,2)
 """
 
-# Base Layer (Layer 0)
+# Base Layer (Layer 0) - Just the basics to get you typing
 [[layer]]
 name = "base_layer"
 keys = """
@@ -42,26 +24,22 @@ Z      X      C      V      B      N      M      COMM   DOT    SLSH
 ESC    SPC    TAB                  ENT    BSPC   MO(1)
 """
 
-# Lower Layer (Layer 1)
+# Blank Layer 1 (Accessible via Vial)
 [[layer]]
 name = "lower_layer"
 keys = """
-1      2      3      4      5      6      7      8      9      0
-_      _      _      _      _      LEFT   DOWN   UP     RGHT   _
+_      _      _      _      _      _      _      _      _      _
+_      _      _      _      _      _      _      _      _      _
 _      _      _      _      _      _      _      _      _      _
 _      _      _                    _      _      _
 """
 
-# Raise Layer (Layer 2) - Fixed with S() syntax
+# Blank Layer 2 (Accessible via Vial)
 [[layer]]
 name = "raise_layer"
 keys = """
-S(1)   S(2)   S(3)   S(4)   S(5)   S(6)   S(7)   S(8)   S(9)   S(0)
-_      _      _      _      _      MINS   EQL    LBRC   RBRC   S(BSLS)
-_      _      _      _      _      S(MINS) S(EQL) S(LBRC) S(RBRC) BSLS
+_      _      _      _      _      _      _      _      _      _
+_      _      _      _      _      _      _      _      _      _
+_      _      _      _      _      _      _      _      _      _
 _      _      _                    _      _      _
 """
-
-[vial]
-vial_enabled = true
-vial_id = [0x43, 0x68, 0x65, 0x61, 0x70, 0x69, 0x6E, 0x6F] # "Cheapino" in hex
