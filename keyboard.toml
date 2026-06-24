@@ -19,7 +19,8 @@ col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
 [layout]
 rows = 6
 cols = 6
-layers_num = 3 # Crucial for the RMK compiler macro
+layers = 3     # Added to fix the missing field error
+layers_num = 3 # Kept for the layout engine macro
 
 # String mapping of the electronic matrix to physical keys
 matrix_map = """
