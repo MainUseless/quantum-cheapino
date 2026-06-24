@@ -3,32 +3,41 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "**.toml"
-      - "**.json"
+      - "**"
 
 jobs:
   build:
-    uses: haobogu/rmk/.github/workflows/user_build.yml@main
-    with:
-      keyboard_toml_path: "keyboard.toml"
-      vial_json_path: "vial.json"
-
-  upload_esp32_bin:
-    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Re-runs just the lightweight initialization to grab the build folder context
-      - name: Setup rmkit
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv2-none-eabi
+
+      - name: Install Build Tools
         run: |
-          cargo install rmkit --version 0.1.3
+          cargo install cargo-make
+          cargo install rmkit
+
+      - name: Setup Project Workspace
+        run: |
           rmkit create --keyboard-toml-path keyboard.toml --vial-json-path vial.json --target-dir rmk
 
-      # Since the cloud architecture already compiled it, we tell the runner to snatch the generated binary output
-      - name: Upload Actual ESP32 Binary
+      - name: Compile Firmware
+        run: |
+          cd rmk
+          cargo build --release
+
+      - name: Post-Build Binary Packaging
+        run: |
+          cd rmk
+          cargo make uf2 --release
+
+      - name: Upload Flashable Binary
         uses: actions/upload-artifact@v4
         with:
-          name: cheapino-esp32c3-bin
+          name: cheapino-firmware
           path: rmk/Rust_Cheapino.bin
