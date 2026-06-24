@@ -5,39 +5,10 @@ on:
     paths:
       - "**"
 
+
 jobs:
   build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: thumbv2-none-eabi
-
-      - name: Install Build Tools
-        run: |
-          cargo install cargo-make
-          cargo install rmkit
-
-      - name: Setup Project Workspace
-        run: |
-          rmkit create --keyboard-toml-path keyboard.toml --vial-json-path vial.json --target-dir rmk
-
-      - name: Compile Firmware
-        run: |
-          cd rmk
-          cargo build --release
-
-      - name: Post-Build Binary Packaging
-        run: |
-          cd rmk
-          cargo make uf2 --release
-
-      - name: Upload Flashable Binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: cheapino-firmware
-          path: rmk/Rust_Cheapino.bin
+    uses: haobogu/rmk/.github/workflows/user_build.yml@main
+    with:
+      keyboard_toml_path: "keyboard.toml"
+      vial_json_path: "vial.json"
