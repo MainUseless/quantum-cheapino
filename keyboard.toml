@@ -4,6 +4,8 @@ product_name = "Rust Cheapino"
 product_id = 0x0001
 vendor_id = 0x4B42 # "KB" in hex
 manufacturer = "Custom"
+# Set the chip explicitly so RMK knows it's an ESP32-C3
+chip = "esp32c3"
 
 [backend]
 # Rows (6 total: 3 for Left side, 3 for Right side)
