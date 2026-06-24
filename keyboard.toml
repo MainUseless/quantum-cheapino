@@ -14,7 +14,7 @@ rows = 6
 cols = 6
 row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
 col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
-input_pinned_high = true
+matrix_type = "direct_pin"
 
 
 [layout]
