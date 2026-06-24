@@ -1,3 +1,21 @@
+[keyboard]
+name = "Rust Cheapino"
+product_name = "Rust Cheapino"
+product_id = 0x0001
+vendor_id = 0x4B42 # "KB" in hex
+manufacturer = "Custom"
+chip = "esp32-c3" # Fixed: Added the missing hyphen
+
+[backend]
+# Left empty for single-chip matrix configuration
+
+[matrix]
+rows = 6
+cols = 6
+# Define your physical GPIO pins here
+row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
+col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
+
 [layout]
 rows = 6
 cols = 6
@@ -14,7 +32,7 @@ matrix_map = """
 (0,5) (1,5) (2,5) (3,2) (4,2) (5,2)
 """
 
-# Base Layer (Layer 0) - Just the basics to get you typing
+# Base Layer (Layer 0)
 [[layer]]
 name = "base_layer"
 keys = """
@@ -24,7 +42,7 @@ Z      X      C      V      B      N      M      COMM   DOT    SLSH
 ESC    SPC    TAB                  ENT    BSPC   MO(1)
 """
 
-# Blank Layer 1 (Accessible via Vial)
+# Lower Layer (Layer 1) - Clear for Vial editing
 [[layer]]
 name = "lower_layer"
 keys = """
@@ -34,7 +52,7 @@ _      _      _      _      _      _      _      _      _      _
 _      _      _                    _      _      _
 """
 
-# Blank Layer 2 (Accessible via Vial)
+# Raise Layer (Layer 2) - Clear for Vial editing
 [[layer]]
 name = "raise_layer"
 keys = """
@@ -43,3 +61,7 @@ _      _      _      _      _      _      _      _      _      _
 _      _      _      _      _      _      _      _      _      _
 _      _      _                    _      _      _
 """
+
+[vial]
+vial_enabled = true
+vial_id = [0x43, 0x68, 0x65, 0x61, 0x70, 0x69, 0x6E, 0x6F] # "Cheapino" in hex
