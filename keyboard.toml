@@ -19,8 +19,8 @@ col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
 [layout]
 rows = 6
 cols = 6
-layers = 3     # Added to fix the missing field error
-layers_num = 3 # Kept for the layout engine macro
+layers = 3
+layers_num = 3
 
 # String mapping of the electronic matrix to physical keys
 matrix_map = """
@@ -52,13 +52,13 @@ _      _      _      _      _      _      _      _      _      _
 _      _      _                    _      _      _
 """
 
-# Raise Layer (Layer 2)
+# Raise Layer (Layer 2) - Fixed with S() syntax
 [[layer]]
 name = "raise_layer"
 keys = """
-EXLM   AT     HASH   DLR    PERC   CIRC   AMPR   ASTR   LPRN   RPRN
-_      _      _      _      _      MINS   EQL    LBRC   RBRC   PIPE
-_      _      _      _      _      UNST   PLUS   LCBR   RCBR   BSLS
+S(1)   S(2)   S(3)   S(4)   S(5)   S(6)   S(7)   S(8)   S(9)   S(0)
+_      _      _      _      _      MINS   EQL    LBRC   RBRC   S(BSLS)
+_      _      _      _      _      S(MINS) S(EQL) S(LBRC) S(RBRC) BSLS
 _      _      _                    _      _      _
 """
 
