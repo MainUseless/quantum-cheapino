@@ -7,15 +7,19 @@ manufacturer = "Custom"
 chip = "esp32c3"
 
 [backend]
-# Left empty for now as pins have moved to the matrix block
+# Left empty for single-chip matrix configuration
 
 [matrix]
 rows = 6
 cols = 6
-layers = 3
-# Moved row_pins and col_pins inside [matrix] for standard layouts
+# Define your physical GPIO pins here
 row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
 col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
+
+[layout]
+rows = 6
+cols = 6
+layers_num = 3 # Crucial for the RMK compiler macro
 
 # String mapping of the electronic matrix to physical keys
 matrix_map = """
