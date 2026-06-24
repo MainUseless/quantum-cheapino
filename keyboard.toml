@@ -15,10 +15,10 @@ matrix_type = "direct_pin"
 direct_pins = [
     ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"],
     ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"],
-    ["no_pin", "no_pin", "no_pin", "no_pin", "no_pin", "no_pin"],
-    ["no_pin", "no_pin", "no_pin", "no_pin", "no_pin", "no_pin"],
-    ["no_pin", "no_pin", "no_pin", "no_pin", "no_pin", "no_pin"],
-    ["no_pin", "no_pin", "no_pin", "no_pin", "no_pin", "no_pin"]
+    ["", "", "", "", "", ""],
+    ["", "", "", "", "", ""],
+    ["", "", "", "", "", ""],
+    ["", "", "", "", "", ""]
 ]
 
 [layout]
