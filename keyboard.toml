@@ -4,7 +4,6 @@ product_name = "Rust Cheapino"
 product_id = 0x0001
 vendor_id = 0x4B42 # "KB" in hex
 manufacturer = "Custom"
-# Set the chip explicitly so RMK knows it's an ESP32-C3
 chip = "esp32c3"
 
 [backend]
@@ -13,7 +12,8 @@ row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
 # Columns (6 total: 3 for Left side, 3 for Right side via RJ45)
 col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
 
-[layout]
+# Changed from [layout] to [matrix] for RMK compliance
+[matrix]
 rows = 6
 cols = 6
 layers = 3
