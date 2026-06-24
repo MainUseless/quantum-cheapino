@@ -5,10 +5,50 @@ on:
     paths:
       - "**"
 
-
 jobs:
   build:
-    uses: haobogu/rmk/.github/workflows/user_build.yml@main
-    with:
-      keyboard_toml_path: "keyboard.toml"
-      vial_json_path: "vial.json"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: riscv32imc-unknown-none-elf
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            target/
+          key: ${{ runner.os }}-cargo-esp32c3-${{ hashFiles('**/keyboard.toml') }}
+
+      - name: Install Build Tools
+        run: |
+          cargo install rmkit --force
+          cargo install espflash --force
+
+      - name: Setup Project Workspace
+        run: |
+          rmkit create --keyboard-toml-path keyboard.toml --vial-json-path vial.json --target-dir rmk
+
+      - name: Compile Firmware
+        run: |
+          cd rmk
+          cargo build --release
+
+      - name: Convert to Flashable Binary
+        run: |
+          cd rmk
+          BINARY=$(find target/riscv32imc-unknown-none-elf/release -maxdepth 1 -type f -executable ! -name "*.d" | head -1)
+          espflash save-image --chip esp32c3 --merge "$BINARY" firmware.bin
+
+      - name: Upload Firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: cheapino-firmware
+          path: rmk/firmware.bin
