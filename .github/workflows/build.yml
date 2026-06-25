@@ -6,7 +6,26 @@ on:
       - "**"
 
 jobs:
-  build:
+  # JOB 1: Handles and caches the heavy cargo build utilities
+  prepare-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache Cargo Binaries
+        id: cache-cargo-bin
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/
+          key: ${{ runner.os }}-cargo-binaries-v1
+
+      - name: Install Tools on Cache Miss
+        if: steps.cache-cargo-bin.outputs.cache-hit != 'true'
+        run: |
+          cargo install rmkit --force
+          cargo install espflash --force
+
+  # JOB 2: Injects your custom matrix source code and compiles the binary
+  build-firmware:
+    needs: prepare-tools
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -17,20 +36,20 @@ jobs:
         with:
           targets: riscv32imc-unknown-none-elf
 
-      - name: Cache Cargo
+      - name: Load Pre-built Tools Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/
+          key: ${{ runner.os }}-cargo-binaries-v1
+
+      - name: Cache Cargo Registry & Target
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/
             ~/.cargo/git/
-            target/
+            rmk/target/
           key: ${{ runner.os }}-cargo-esp32c3-${{ hashFiles('**/keyboard.toml') }}
-
-      - name: Install Build Tools
-        run: |
-          cargo +stable install rmkit --force
-          cargo +stable install espflash --force
 
       - name: Setup Project Workspace
         run: |
@@ -43,16 +62,14 @@ jobs:
           #![no_main]
 
           use esp_backtrace as _;
-          use embassy_executor::Spawner;
-          use embassy_time::{Duration, Timer};
-          use hal::{
+          use esp_hal::{
               gpio::{Input, Output, Pull, Level, Speed, AnyPin, Pin},
-              peripherals::Peripherals,
+              delay::Delay,
           };
           use rmk::{
               config::RmkConfig,
-              initialize_keyboard_with_config,
-              matrix::KeyState,
+              matrix::{MatrixTrait, KeyState},
+              run_rmk,
           };
 
           const ROWS: usize = 6;
@@ -69,55 +86,40 @@ jobs:
               ]
           ];
 
-          #[embassy_executor::main]
-          async fn main(spawner: Spawner) {
-              let peripherals = hal::init(hal::Config::default());
+          struct CheapinoDuplexMatrix {
+              row_pins: [AnyPin; ROWS],
+              col_pins: [AnyPin; COLS],
+              delay: Delay,
+          }
 
-              let row_gpios = [
-                  peripherals.GPIO4.degrade(),
-                  peripherals.GPIO5.degrade(),
-                  peripherals.GPIO6.degrade(),
-                  peripherals.GPIO2.degrade(),
-                  peripherals.GPIO8.degrade(),
-                  peripherals.GPIO9.degrade(),
-              ];
+          impl MatrixTrait for CheapinoDuplexMatrix {
+              type Error = core::convert::Infallible;
 
-              let col_gpios = [
-                  peripherals.GPIO0.degrade(),
-                  peripherals.GPIO1.degrade(),
-                  peripherals.GPIO3.degrade(),
-                  peripherals.GPIO7.degrade(),
-                  peripherals.GPIO10.degrade(),
-                  peripherals.GPIO20.degrade(),
-              ];
+              fn scan(&mut self) -> Result<[[KeyState; COLS]; ROWS], Self::Error> {
+                  let mut matrix_state = [[KeyState::default(); COLS]; ROWS];
 
-              let config = RmkConfig::default();
-              let (mut keyboard, _) = initialize_keyboard_with_config(KEYMAP, config).await;
-              let mut matrix_state = [[KeyState::default(); COLS]; ROWS];
-
-              loop {
-                  // PASS 1: Rows Output, Cols Input
+                  // --- PASS 1: Rows as Outputs (Drive Low), Cols as Inputs ---
                   {
                       let mut outputs: [Output<'_, AnyPin>; ROWS] = [
-                          Output::new(row_gpios[0].clone(), Level::High, Speed::Low),
-                          Output::new(row_gpios[1].clone(), Level::High, Speed::Low),
-                          Output::new(row_gpios[2].clone(), Level::High, Speed::Low),
-                          Output::new(row_gpios[3].clone(), Level::High, Speed::Low),
-                          Output::new(row_gpios[4].clone(), Level::High, Speed::Low),
-                          Output::new(row_gpios[5].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[0].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[1].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[2].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[3].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[4].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[5].clone(), Level::High, Speed::Low),
                       ];
                       let inputs: [Input<'_, AnyPin>; COLS] = [
-                          Input::new(col_gpios[0].clone(), Pull::Up),
-                          Input::new(col_gpios[1].clone(), Pull::Up),
-                          Input::new(col_gpios[2].clone(), Pull::Up),
-                          Input::new(col_gpios[3].clone(), Pull::Up),
-                          Input::new(col_gpios[4].clone(), Pull::Up),
-                          Input::new(col_gpios[5].clone(), Pull::Up),
+                          Input::new(self.col_pins[0].clone(), Pull::Up),
+                          Input::new(self.col_pins[1].clone(), Pull::Up),
+                          Input::new(self.col_pins[2].clone(), Pull::Up),
+                          Input::new(self.col_pins[3].clone(), Pull::Up),
+                          Input::new(self.col_pins[4].clone(), Pull::Up),
+                          Input::new(self.col_pins[5].clone(), Pull::Up),
                       ];
 
                       for r in 0..ROWS {
                           outputs[r].set_low();
-                          Timer::after_micros(5).await;
+                          self.delay.delay_micros(5);
                           for c in 0..COLS {
                               if inputs[c].is_low() {
                                   matrix_state[r][c].pressed = true;
@@ -127,28 +129,28 @@ jobs:
                       }
                   }
 
-                  // PASS 2: Cols Output, Rows Input
+                  // --- PASS 2: Cols as Outputs (Drive Low), Rows as Inputs ---
                   {
                       let mut outputs: [Output<'_, AnyPin>; COLS] = [
-                          Output::new(col_gpios[0].clone(), Level::High, Speed::Low),
-                          Output::new(col_gpios[1].clone(), Level::High, Speed::Low),
-                          Output::new(col_gpios[2].clone(), Level::High, Speed::Low),
-                          Output::new(col_gpios[3].clone(), Level::High, Speed::Low),
-                          Output::new(col_gpios[4].clone(), Level::High, Speed::Low),
-                          Output::new(col_gpios[5].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[0].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[1].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[2].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[3].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[4].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[5].clone(), Level::High, Speed::Low),
                       ];
                       let inputs: [Input<'_, AnyPin>; ROWS] = [
-                          Input::new(row_gpios[0].clone(), Pull::Up),
-                          Input::new(row_gpios[1].clone(), Pull::Up),
-                          Input::new(row_gpios[2].clone(), Pull::Up),
-                          Input::new(row_gpios[3].clone(), Pull::Up),
-                          Input::new(row_gpios[4].clone(), Pull::Up),
-                          Input::new(row_gpios[5].clone(), Pull::Up),
+                          Input::new(self.row_pins[0].clone(), Pull::Up),
+                          Input::new(self.row_pins[1].clone(), Pull::Up),
+                          Input::new(self.row_pins[2].clone(), Pull::Up),
+                          Input::new(self.row_pins[3].clone(), Pull::Up),
+                          Input::new(self.row_pins[4].clone(), Pull::Up),
+                          Input::new(self.row_pins[5].clone(), Pull::Up),
                       ];
 
                       for c in 0..COLS {
                           outputs[c].set_low();
-                          Timer::after_micros(5).await;
+                          self.delay.delay_micros(5);
                           for r in 0..ROWS {
                               if inputs[r].is_low() {
                                   matrix_state[r][c].pressed = true;
@@ -158,15 +160,41 @@ jobs:
                       }
                   }
 
-                  keyboard.set_matrix_state(&matrix_state).await;
-
-                  for r in 0..ROWS {
-                      for c in 0..COLS {
-                          matrix_state[r][c].pressed = false;
-                      }
-                  }
-                  Timer::after_millis(1).await;
+                  Ok(matrix_state)
               }
+          }
+
+          #[esp_hal::main]
+          fn main() -> ! {
+              let peripherals = esp_hal::init(esp_hal::Config::default());
+              let delay = Delay::new();
+
+              let row_pins = [
+                  peripherals.GPIO4.degrade(),
+                  peripherals.GPIO5.degrade(),
+                  peripherals.GPIO6.degrade(),
+                  peripherals.GPIO2.degrade(),
+                  peripherals.GPIO8.degrade(),
+                  peripherals.GPIO9.degrade(),
+              ];
+
+              let col_pins = [
+                  peripherals.GPIO0.degrade(),
+                  peripherals.GPIO1.degrade(),
+                  peripherals.GPIO3.degrade(),
+                  peripherals.GPIO7.degrade(),
+                  peripherals.GPIO10.degrade(),
+                  peripherals.GPIO20.degrade(),
+              ];
+
+              let my_matrix = CheapinoDuplexMatrix {
+                  row_pins,
+                  col_pins,
+                  delay,
+              };
+
+              let config = RmkConfig::default();
+              run_rmk(&KEYMAP, my_matrix, config);
           }
           EOF
 
@@ -180,7 +208,6 @@ jobs:
       - name: Convert to Flashable Binary
         run: |
           cd rmk
-          # Detect the exact artifact name generated dynamically by rmkit
           ELF_FILE=$(find target/riscv32imc-unknown-none-elf/release/ -maxdepth 1 -type f ! -name "*.d" ! -name "*.bin" | head -n 1)
           espflash save-image --chip esp32c3 --merge "$ELF_FILE" firmware.bin
 
