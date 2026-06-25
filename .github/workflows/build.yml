@@ -6,24 +6,7 @@ on:
       - "**"
 
 jobs:
-  prepare-tools:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cache Cargo Binaries
-        id: cache-cargo-bin
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/
-          key: ${{ runner.os }}-cargo-binaries-v1
-
-      - name: Install Tools on Cache Miss
-        if: steps.cache-cargo-bin.outputs.cache-hit != 'true'
-        run: |
-          cargo install rmkit --force
-          cargo install espflash --force
-
   build-firmware:
-    needs: prepare-tools
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -34,14 +17,28 @@ jobs:
         with:
           targets: riscv32imc-unknown-none-elf
 
-      - name: Cache Cargo Registry & Target
+      - name: Cache Cargo Binaries & Registry
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry/
-            ~/.cargo/git/
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
             rmk/target/
-          key: ${{ runner.os }}-cargo-esp32c3-${{ hashFiles('**/keyboard.toml') }}
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/keyboard.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
+
+      - name: Install Tools if Missing
+        run: |
+          # Only install if they aren't already restored from the cache
+          if ! command -v rmkit &> /dev/null; then
+            cargo install rmkit --force
+           Keene
+          if ! command -v espflash &> /dev/null; then
+            cargo install espflash --force
+          fi
 
       - name: Setup Project Workspace
         run: |
@@ -69,7 +66,6 @@ jobs:
           const ROWS: usize = 6;
           const COLS: usize = 6;
 
-          // In esp-hal 1.0.0, we use Flex to dynamically swap pins between Input and Output
           struct CheapinoDuplexMatrix<'d> {
               row_pins: [Flex<'d>; ROWS],
               col_pins: [Flex<'d>; COLS],
@@ -78,7 +74,6 @@ jobs:
           }
 
           impl<'d> CheapinoDuplexMatrix<'d> {
-              // Now an async function for Embassy
               async fn scan_matrix(&mut self) {
                   let mut current_state = [[false; COLS]; ROWS];
 
@@ -86,7 +81,7 @@ jobs:
                   for r in 0..ROWS {
                       self.row_pins[r].set_as_output();
                       self.row_pins[r].set_low();
-                      Timer::after_micros(5).await; // Embassy async delay
+                      Timer::after_micros(5).await;
 
                       for c in 0..COLS {
                           self.col_pins[c].set_as_input(Pull::Up);
@@ -95,7 +90,7 @@ jobs:
                           }
                       }
                       self.row_pins[r].set_high();
-                      self.row_pins[r].set_as_input(Pull::Up); // Restore
+                      self.row_pins[r].set_as_input(Pull::Up);
                   }
 
                   // PASS 2: Cols as Outputs (Drive Low), Rows as Inputs
@@ -114,7 +109,6 @@ jobs:
                       self.col_pins[c].set_as_input(Pull::Up);
                   }
 
-                  // Compare passes and queue events for RMK
                   for r in 0..ROWS {
                       for c in 0..COLS {
                           if current_state[r][c] != self.prev_state[r][c] {
@@ -130,7 +124,6 @@ jobs:
               }
           }
 
-          // RMK 0.8 expects InputDevice instead of MatrixTrait
           impl<'d> InputDevice for CheapinoDuplexMatrix<'d> {
               type Error = Infallible;
 
@@ -140,17 +133,15 @@ jobs:
                           return Ok(event);
                       }
                       self.scan_matrix().await;
-                      Timer::after_millis(1).await; // Debounce/Scan interval
+                      Timer::after_millis(1).await;
                   }
               }
           }
 
           #[rmk::macros::rmk_keyboard]
           mod keyboard {
-              // RMK 0.8 handles Embassy, USB, and Keymaps automatically via this macro.
-              // NOTE: Because RMK abstracts the initialization here, you will need to check 
-              // the RMK 0.8.x documentation on how to specifically inject your custom 
-              // `CheapinoDuplexMatrix` InputDevice into this macro.
+              // Note: You will need to check the RMK 0.8.x documentation on how to 
+              // specifically pass your custom `CheapinoDuplexMatrix` InputDevice into this macro.
           }
           EOF
 
