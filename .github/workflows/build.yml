@@ -50,98 +50,140 @@ jobs:
           #![no_std]
           #![no_main]
 
-          use core::convert::Infallible;
-          use embassy_time::{Duration, Timer};
-          use esp_alloc as _;
           use esp_backtrace as _;
           use esp_hal::{
-              gpio::{Flex, Pull},
-              init,
+              gpio::{Input, Output, Pull, Level, Speed, AnyPin, Pin},
+              delay::Delay,
           };
           use rmk::{
-              device::InputDevice,
-              event::KeyEvent,
+              config::RmkConfig,
+              matrix::{MatrixTrait, KeyState},
+              run_rmk,
           };
 
           const ROWS: usize = 6;
           const COLS: usize = 6;
 
-          struct CheapinoDuplexMatrix<'d> {
-              row_pins: [Flex<'d>; ROWS],
-              col_pins: [Flex<'d>; COLS],
-              prev_state: [[bool; COLS]; ROWS],
-              events: heapless::spsc::Queue<KeyEvent, 16>,
+          static KEYMAP: [[[u16; COLS]; ROWS]; 1] = [
+              [
+                  [1, 2, 3, 4, 5, 6],
+                  [7, 8, 9, 10, 11, 12],
+                  [13, 14, 15, 16, 17, 18],
+                  [19, 20, 21, 22, 23, 24],
+                  [25, 26, 27, 28, 29, 30],
+                  [31, 32, 33, 34, 35, 36],
+              ]
+          ];
+
+          struct CheapinoDuplexMatrix {
+              row_pins: [AnyPin; ROWS],
+              col_pins: [AnyPin; COLS],
+              delay: Delay,
           }
 
-          impl<'d> CheapinoDuplexMatrix<'d> {
-              async fn scan_matrix(&mut self) {
-                  let mut current_state = [[false; COLS]; ROWS];
+          impl MatrixTrait for CheapinoDuplexMatrix {
+              type Error = core::convert::Infallible;
 
-                  // PASS 1: Rows as Outputs (Drive Low), Cols as Inputs
-                  for r in 0..ROWS {
-                      self.row_pins[r].set_as_output();
-                      self.row_pins[r].set_low();
-                      Timer::after_micros(5).await;
+              fn scan(&mut self) -> Result<[[KeyState; COLS]; ROWS], Self::Error> {
+                  let mut matrix_state = [[KeyState::default(); COLS]; ROWS];
 
-                      for c in 0..COLS {
-                          self.col_pins[c].set_as_input(Pull::Up);
-                          if self.col_pins[c].is_low() {
-                              current_state[r][c] = true;
-                          }
-                      }
-                      self.row_pins[r].set_high();
-                      self.row_pins[r].set_as_input(Pull::Up);
-                  }
-
-                  // PASS 2: Cols as Outputs (Drive Low), Rows as Inputs
-                  for c in 0..COLS {
-                      self.col_pins[c].set_as_output();
-                      self.col_pins[c].set_low();
-                      Timer::after_micros(5).await;
+                  // --- PASS 1: Rows as Outputs (Drive Low), Cols as Inputs ---
+                  {
+                      let mut outputs: [Output<'_, AnyPin>; ROWS] = [
+                          Output::new(self.row_pins[0].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[1].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[2].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[3].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[4].clone(), Level::High, Speed::Low),
+                          Output::new(self.row_pins[5].clone(), Level::High, Speed::Low),
+                      ];
+                      let inputs: [Input<'_, AnyPin>; COLS] = [
+                          Input::new(self.col_pins[0].clone(), Pull::Up),
+                          Input::new(self.col_pins[1].clone(), Pull::Up),
+                          Input::new(self.col_pins[2].clone(), Pull::Up),
+                          Input::new(self.col_pins[3].clone(), Pull::Up),
+                          Input::new(self.col_pins[4].clone(), Pull::Up),
+                          Input::new(self.col_pins[5].clone(), Pull::Up),
+                      ];
 
                       for r in 0..ROWS {
-                          self.row_pins[r].set_as_input(Pull::Up);
-                          if self.row_pins[r].is_low() {
-                              current_state[r][c] = true;
+                          outputs[r].set_low();
+                          self.delay.delay_micros(5);
+                          for c in 0..COLS {
+                              if inputs[c].is_low() {
+                                  matrix_state[r][c].pressed = true;
+                              }
                           }
+                          outputs[r].set_high();
                       }
-                      self.col_pins[c].set_high();
-                      self.col_pins[c].set_as_input(Pull::Up);
                   }
 
-                  for r in 0..ROWS {
+                  // --- PASS 2: Cols as Outputs (Drive Low), Rows as Inputs ---
+                  {
+                      let mut outputs: [Output<'_, AnyPin>; COLS] = [
+                          Output::new(self.col_pins[0].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[1].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[2].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[3].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[4].clone(), Level::High, Speed::Low),
+                          Output::new(self.col_pins[5].clone(), Level::High, Speed::Low),
+                      ];
+                      let inputs: [Input<'_, AnyPin>; ROWS] = [
+                          Input::new(self.row_pins[0].clone(), Pull::Up),
+                          Input::new(self.row_pins[1].clone(), Pull::Up),
+                          Input::new(self.row_pins[2].clone(), Pull::Up),
+                          Input::new(self.row_pins[3].clone(), Pull::Up),
+                          Input::new(self.row_pins[4].clone(), Pull::Up),
+                          Input::new(self.row_pins[5].clone(), Pull::Up),
+                      ];
+
                       for c in 0..COLS {
-                          if current_state[r][c] != self.prev_state[r][c] {
-                              let _ = self.events.enqueue(KeyEvent {
-                                  row: r as u8,
-                                  col: c as u8,
-                                  pressed: current_state[r][c],
-                              });
-                              self.prev_state[r][c] = current_state[r][c];
+                          outputs[c].set_low();
+                          self.delay.delay_micros(5);
+                          for r in 0..ROWS {
+                              if inputs[r].is_low() {
+                                  matrix_state[r][c].pressed = true;
+                              }
                           }
+                          outputs[c].set_high();
                       }
                   }
+
+                  Ok(matrix_state)
               }
           }
 
-          impl<'d> InputDevice for CheapinoDuplexMatrix<'d> {
-              type Error = Infallible;
+          #[esp_hal::main]
+          fn main() -> ! {
+              let peripherals = esp_hal::init(esp_hal::Config::default());
+              let delay = Delay::new();
 
-              async fn read(&mut self) -> Result<KeyEvent, Self::Error> {
-                  loop {
-                      if let Some(event) = self.events.dequeue() {
-                          return Ok(event);
-                      }
-                      self.scan_matrix().await;
-                      Timer::after_millis(1).await;
-                  }
-              }
-          }
+              let row_pins = [
+                  peripherals.GPIO4.degrade(),
+                  peripherals.GPIO5.degrade(),
+                  peripherals.GPIO6.degrade(),
+                  peripherals.GPIO2.degrade(),
+                  peripherals.GPIO8.degrade(),
+                  peripherals.GPIO9.degrade(),
+              ];
 
-          #[rmk::macros::rmk_keyboard]
-          mod keyboard {
-              // Note: You will need to check the RMK 0.8.x documentation on how to 
-              // specifically pass your custom `CheapinoDuplexMatrix` InputDevice into this macro.
+              let col_pins = [
+                  peripherals.GPIO0.degrade(),
+                  peripherals.GPIO1.degrade(),
+                  peripherals.GPIO3.degrade(),
+                  peripherals.GPIO7.degrade(),
+                  peripherals.GPIO10.degrade(),
+                  peripherals.GPIO20.degrade(),
+              ];
+
+              let my_matrix = CheapinoDuplexMatrix {
+                  row_pins,
+                  col_pins,
+                  delay,
+              };
+
+              let config = RmkConfig::default();
+              run_rmk(&KEYMAP, my_matrix, config);
           }
           EOF
 
