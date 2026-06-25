@@ -35,10 +35,12 @@ jobs:
         env:
           RUST_MIN_STACK: 16777216
         run: |
+          cd rmk
           cargo +nightly build --release --target riscv32imc-unknown-none-elf
 
       - name: Convert to Flashable Binary
         run: |
+          cd rmk
           espflash save-image --chip esp32c3 --merge target/riscv32imc-unknown-none-elf/release/Rust_Cheapino firmware.bin
 
       - name: Upload Firmware
