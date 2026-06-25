@@ -9,16 +9,16 @@ usb_enable = false
 
 [matrix]
 # Input and output pins are mandatory
-input_pins = ["GPIO6", "GPIO7", "GPIO20", "GPIO21"]
-output_pins = ["GPIO3", "GPIO4", "GPIO5"]
+row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
+col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
 
 # WARNING: Currently row2col/col2row is set in RMK's feature gate, row2col config here is valid ONLY when you're using cloud compilation.
 # Checkout doc here: https://rmk.rs/docs/user_guide/faq.html#my-matrix-is-row2col-the-matrix-doesn-t-work
 # row2col = true
 
 [layout]
-rows = 4
-cols = 3
+rows = 6
+cols = 6
 layers = 2
 keymap = [
     [
