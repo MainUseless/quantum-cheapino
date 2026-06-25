@@ -25,36 +25,24 @@ jobs:
             ~/.cargo/registry/
             ~/.cargo/git/
             target/
-          key: ${{ runner.os }}-cargo-esp32c3-${{ hashFiles('**/keyboard.toml') }}
+          key: ${{ runner.os }}-cargo-esp32c3-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: Install Build Tools
+      - name: Install Flashing Tools
         run: |
-          cargo +stable install rmkit --force
           cargo +stable install espflash --force
 
-      - name: Setup Project Workspace
-        run: |
-          rmkit create --keyboard-toml-path keyboard.toml --vial-json-path vial.json --target-dir rmk
-
-      - name: Compile Firmware
+      - name: Compile Custom Firmware
         env:
           RUST_MIN_STACK: 16777216
         run: |
-          cd rmk
-          cargo +nightly build --release
-
-      - name: Get Project Name
-        id: project
-        run: |
-          echo "name=$(rmkit get-project-name --keyboard-toml-path keyboard.toml)" >> $GITHUB_OUTPUT
+          cargo +nightly build --release --target riscv32imc-unknown-none-elf
 
       - name: Convert to Flashable Binary
         run: |
-          cd rmk
-          espflash save-image --chip esp32c3 --merge target/riscv32imc-unknown-none-elf/release/${{ steps.project.outputs.name }} firmware.bin
+          espflash save-image --chip esp32c3 --merge target/riscv32imc-unknown-none-elf/release/Rust_Cheapino firmware.bin
 
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
           name: cheapino-firmware
-          path: rmk/firmware.bin
+          path: firmware.bin
