@@ -52,58 +52,50 @@ jobs:
 
           use esp_backtrace as _;
           use esp_hal::{
-              gpio::{Input, Output, Pull, Level, Speed, AnyPin, Pin},
+              gpio::{Input, Output, Pull, Level, AnyPin, Pin, InputConfig},
               delay::Delay,
+              prelude::*,
           };
           use rmk::{
               config::RmkConfig,
-              matrix::{MatrixTrait, KeyState},
+              matrix::{Matrix, KeyState},
+              storage::Storage,
               run_rmk,
           };
+          use core::convert::Infallible;
 
           const ROWS: usize = 6;
           const COLS: usize = 6;
 
-          static KEYMAP: [[[u16; COLS]; ROWS]; 1] = [
-              [
-                  [1, 2, 3, 4, 5, 6],
-                  [7, 8, 9, 10, 11, 12],
-                  [13, 14, 15, 16, 17, 18],
-                  [19, 20, 21, 22, 23, 24],
-                  [25, 26, 27, 28, 29, 30],
-                  [31, 32, 33, 34, 35, 36],
-              ]
-          ];
-
-          struct CheapinoDuplexMatrix {
-              row_pins: [AnyPin; ROWS],
-              col_pins: [AnyPin; COLS],
+          struct CheapinoDuplexMatrix<'a> {
+              row_pins: [AnyPin<'a>; ROWS],
+              col_pins: [AnyPin<'a>; COLS],
               delay: Delay,
           }
 
-          impl MatrixTrait for CheapinoDuplexMatrix {
-              type Error = core::convert::Infallible;
+          impl<'a> Matrix<COLS, ROWS> for CheapinoDuplexMatrix<'a> {
+              type Error = Infallible;
 
               fn scan(&mut self) -> Result<[[KeyState; COLS]; ROWS], Self::Error> {
                   let mut matrix_state = [[KeyState::default(); COLS]; ROWS];
 
                   // --- PASS 1: Rows as Outputs (Drive Low), Cols as Inputs ---
                   {
-                      let mut outputs: [Output<'_, AnyPin>; ROWS] = [
-                          Output::new(self.row_pins[0].clone(), Level::High, Speed::Low),
-                          Output::new(self.row_pins[1].clone(), Level::High, Speed::Low),
-                          Output::new(self.row_pins[2].clone(), Level::High, Speed::Low),
-                          Output::new(self.row_pins[3].clone(), Level::High, Speed::Low),
-                          Output::new(self.row_pins[4].clone(), Level::High, Speed::Low),
-                          Output::new(self.row_pins[5].clone(), Level::High, Speed::Low),
+                      let mut outputs: [Output<'_, AnyPin<'a>>; ROWS] = [
+                          Output::new(self.row_pins[0].clone(), Level::High),
+                          Output::new(self.row_pins[1].clone(), Level::High),
+                          Output::new(self.row_pins[2].clone(), Level::High),
+                          Output::new(self.row_pins[3].clone(), Level::High),
+                          Output::new(self.row_pins[4].clone(), Level::High),
+                          Output::new(self.row_pins[5].clone(), Level::High),
                       ];
-                      let inputs: [Input<'_, AnyPin>; COLS] = [
-                          Input::new(self.col_pins[0].clone(), Pull::Up),
-                          Input::new(self.col_pins[1].clone(), Pull::Up),
-                          Input::new(self.col_pins[2].clone(), Pull::Up),
-                          Input::new(self.col_pins[3].clone(), Pull::Up),
-                          Input::new(self.col_pins[4].clone(), Pull::Up),
-                          Input::new(self.col_pins[5].clone(), Pull::Up),
+                      let inputs: [Input<'_, AnyPin<'a>>; COLS] = [
+                          Input::new(self.col_pins[0].clone(), InputConfig::new(Pull::Up)),
+                          Input::new(self.col_pins[1].clone(), InputConfig::new(Pull::Up)),
+                          Input::new(self.col_pins[2].clone(), InputConfig::new(Pull::Up)),
+                          Input::new(self.col_pins[3].clone(), InputConfig::new(Pull::Up)),
+                          Input::new(self.col_pins[4].clone(), InputConfig::new(Pull::Up)),
+                          Input::new(self.col_pins[5].clone(), InputConfig::new(Pull::Up)),
                       ];
 
                       for r in 0..ROWS {
@@ -120,21 +112,21 @@ jobs:
 
                   // --- PASS 2: Cols as Outputs (Drive Low), Rows as Inputs ---
                   {
-                      let mut outputs: [Output<'_, AnyPin>; COLS] = [
-                          Output::new(self.col_pins[0].clone(), Level::High, Speed::Low),
-                          Output::new(self.col_pins[1].clone(), Level::High, Speed::Low),
-                          Output::new(self.col_pins[2].clone(), Level::High, Speed::Low),
-                          Output::new(self.col_pins[3].clone(), Level::High, Speed::Low),
-                          Output::new(self.col_pins[4].clone(), Level::High, Speed::Low),
-                          Output::new(self.col_pins[5].clone(), Level::High, Speed::Low),
+                      let mut outputs: [Output<'_, AnyPin<'a>>; COLS] = [
+                          Output::new(self.col_pins[0].clone(), Level::High),
+                          Output::new(self.col_pins[1].clone(), Level::High),
+                          Output::new(self.col_pins[2].clone(), Level::High),
+                          Output::new(self.col_pins[3].clone(), Level::High),
+                          Output::new(self.col_pins[4].clone(), Level::High),
+                          Output::new(self.col_pins[5].clone(), Level::High),
                       ];
-                      let inputs: [Input<'_, AnyPin>; ROWS] = [
-                          Input::new(self.row_pins[0].clone(), Pull::Up),
-                          Input::new(self.row_pins[1].clone(), Pull::Up),
-                          Input::new(self.row_pins[2].clone(), Pull::Up),
-                          Input::new(self.row_pins[3].clone(), Pull::Up),
-                          Input::new(self.row_pins[4].clone(), Pull::Up),
-                          Input::new(self.row_pins[5].clone(), Pull::Up),
+                      let inputs: [Input<'_, AnyPin<'a>>; ROWS] = [
+                          Input::new(self.row_pins[0].clone(), InputConfig::new(Pull::Up)),
+                          Input::new(self.row_pins[1].clone(), InputConfig::new(Pull::Up)),
+                          Input::new(self.row_pins[2].clone(), InputConfig::new(Pull::Up)),
+                          Input::new(self.row_pins[3].clone(), InputConfig::new(Pull::Up)),
+                          Input::new(self.row_pins[4].clone(), InputConfig::new(Pull::Up)),
+                          Input::new(self.row_pins[5].clone(), InputConfig::new(Pull::Up)),
                       ];
 
                       for c in 0..COLS {
@@ -154,26 +146,29 @@ jobs:
           }
 
           #[esp_hal::main]
-          fn main() -> ! {
-              let peripherals = esp_hal::init(esp_hal::Config::default());
-              let delay = Delay::new();
+          async fn main() -> ! {
+              let peripherals = esp_hal::peripherals::Peripherals::take();
+              let system = peripherals.SYSTEM.split();
+              let clocks = esp_hal::clock::ClockControl::boot_defaults(&system.clock_control).freeze();
+
+              let delay = Delay::new(&clocks);
 
               let row_pins = [
-                  peripherals.GPIO4.degrade(),
-                  peripherals.GPIO5.degrade(),
-                  peripherals.GPIO6.degrade(),
-                  peripherals.GPIO2.degrade(),
-                  peripherals.GPIO8.degrade(),
-                  peripherals.GPIO9.degrade(),
+                  peripherals.GPIO4.into_ref(),
+                  peripherals.GPIO5.into_ref(),
+                  peripherals.GPIO6.into_ref(),
+                  peripherals.GPIO2.into_ref(),
+                  peripherals.GPIO8.into_ref(),
+                  peripherals.GPIO9.into_ref(),
               ];
 
               let col_pins = [
-                  peripherals.GPIO0.degrade(),
-                  peripherals.GPIO1.degrade(),
-                  peripherals.GPIO3.degrade(),
-                  peripherals.GPIO7.degrade(),
-                  peripherals.GPIO10.degrade(),
-                  peripherals.GPIO20.degrade(),
+                  peripherals.GPIO0.into_ref(),
+                  peripherals.GPIO1.into_ref(),
+                  peripherals.GPIO3.into_ref(),
+                  peripherals.GPIO7.into_ref(),
+                  peripherals.GPIO10.into_ref(),
+                  peripherals.GPIO20.into_ref(),
               ];
 
               let my_matrix = CheapinoDuplexMatrix {
@@ -183,7 +178,10 @@ jobs:
               };
 
               let config = RmkConfig::default();
-              run_rmk(&KEYMAP, my_matrix, config);
+              let mut storage = Storage::new(&mut [0; 8192]);
+              run_rmk(my_matrix, &mut storage, config).await;
+
+              loop {}
           }
           EOF
 
