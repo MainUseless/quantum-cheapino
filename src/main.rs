@@ -84,7 +84,21 @@ async fn main(spawner: Spawner) {
             for c in 0..COLS {
                 // If input is low, the forward diode switch is physically closed
                 if inputs[c].is_low() {
-                    matrix_state[r][c].pressed = true;
+                    // Map physical (r, c) to logical matrix_state coordinates
+                    if r < 3 && c < 3 {
+                        // Right half forward diode: maps to row r+3, col c*2+1
+                        matrix_state[r + 3][c * 2 + 1].pressed = true;
+                    } else if r >= 3 && c >= 3 {
+                        // Left half forward diode:
+                        let logical_row = r - 3;
+                        let logical_col = match c {
+                            5 => 5, // Thumb key
+                            4 => 1,
+                            3 => 3,
+                            _ => continue,
+                        };
+                        matrix_state[logical_row][logical_col].pressed = true;
+                    }
                 }
             }
             outputs[r].set_high(); // Deactivate row
@@ -110,8 +124,21 @@ async fn main(spawner: Spawner) {
             for r in 0..ROWS {
                 // If row input reads low, the reversed diode switch is physically closed
                 if inputs[r].is_low() {
-                    // Map it carefully into your secondary layout coordinates
-                    matrix_state[r][c].pressed = true; 
+                    // Map physical (r, c) to logical matrix_state coordinates
+                    if r < 3 && c < 3 {
+                        // Right half reverse diode: maps to row r+3, col c*2
+                        matrix_state[r + 3][c * 2].pressed = true;
+                    } else if r >= 3 && c >= 3 {
+                        // Left half reverse diode:
+                        let logical_row = r - 3;
+                        let logical_col = match c {
+                            5 => 0, // Leftmost outer key
+                            4 => 2,
+                            3 => 4,
+                            _ => continue,
+                        };
+                        matrix_state[logical_row][logical_col].pressed = true;
+                    }
                 }
             }
             outputs[c].set_high();

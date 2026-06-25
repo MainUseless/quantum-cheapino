@@ -4,70 +4,39 @@
     "productId": "0x4643",
     "lighting": "none",
     "matrix": {
-        "rows": 4,
-        "cols": 3
+        "rows": 6,
+        "cols": 6
     },
     "customKeycodes": [
-        {
-            "name": "BT0",
-            "title": "Bluetooth Channel 0",
-            "shortName": "BT0"
-        },
-        {
-            "name": "BT1",
-            "title": "Bluetooth Channel 1",
-            "shortName": "BT1"
-        },
-        {
-            "name": "BT2",
-            "title": "Bluetooth Channel 2",
-            "shortName": "BT2"
-        },
-        {
-            "name": "NEXT_BT",
-            "title": "Switch to the next Bluetooth channel",
-            "shortName": "Next\nBT"
-        },
-        {
-            "name": "PREV_BT",
-            "title": "Switch to the previous Bluetooth channel",
-            "shortName": "Prev\nBT"
-        },
-        {
-            "name": "CLR_BT",
-            "title": "Clear bond info for current channel",
-            "shortName": "Clear\nBT"
-        },
-        {
-            "name": "SWITCH",
-            "title": "Switch default output mode between USB/BLE",
-            "shortName": "Switch\nOutput"
-        }
+        { "name": "BT0", "title": "Bluetooth Channel 0", "shortName": "BT0" },
+        { "name": "BT1", "title": "Bluetooth Channel 1", "shortName": "BT1" },
+        { "name": "BT2", "title": "Bluetooth Channel 2", "shortName": "BT2" },
+        { "name": "NEXT_BT", "title": "Switch to next BT", "shortName": "Next\nBT" },
+        { "name": "PREV_BT", "title": "Switch to prev BT", "shortName": "Prev\nBT" },
+        { "name": "CLR_BT", "title": "Clear bond info", "shortName": "Clear\nBT" },
+        { "name": "SWITCH", "title": "Switch USB/BLE", "shortName": "Switch\nOutput" }
     ],
     "layouts": {
         "keymap": [
             [
-                "0,0",
-                "0,1",
-                "0,2"
+                "0,0", "0,1", "0,2", "0,3", "0,4", 
+                {"x": 2}, 
+                "3,0", "3,1", "3,2", "3,3", "3,4"
             ],
             [
-                "1,0",
-                "1,1",
-                "1,2"
+                "1,0", "1,1", "1,2", "1,3", "1,4", 
+                {"x": 2}, 
+                "4,0", "4,1", "4,2", "4,3", "4,4"
             ],
             [
-                "2,0",
-                "2,1",
-                "2,2"
+                "2,0", "2,1", "2,2", "2,3", "2,4", 
+                {"x": 2}, 
+                "5,0", "5,1", "5,2", "5,3", "5,4"
             ],
             [
-                {
-                    "y": -2,
-                    "x": 4
-                },
-                "3,0",
-                "3,2"
+                {"y": -0.5, "x": 3}, "0,5", "1,5", "2,5", 
+                {"x": 2}, 
+                "3,5", "4,5", "5,5"
             ]
         ]
     }
