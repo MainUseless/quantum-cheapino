@@ -1,96 +1,137 @@
 #![no_std]
 #![no_main]
 
-use core::convert::Infallible;
-use embassy_time::{Duration, Timer};
-use esp_alloc as _;
 use esp_backtrace as _;
-use esp_hal::{
-    gpio::{Flex, Pull},
-    init,
+use embassy_executor::Spawner;
+use embassy_time::{Duration, Timer};
+use hal::{
+    gpio::{Input, Output, Pull, Level, Speed, AnyPin, Pin},
+    peripherals::Peripherals,
 };
 use rmk::{
-    device::InputDevice,
-    event::KeyEvent,
+    config::RmkConfig,
+    initialize_keyboard_with_config,
+    matrix::KeyState,
 };
 
+// Define matrix dimensions (Cheapino maps a physical 6x6 grid)
 const ROWS: usize = 6;
 const COLS: usize = 6;
 
-struct CheapinoDuplexMatrix<'d> {
-    row_pins: [Flex<'d>; ROWS],
-    col_pins: [Flex<'d>; COLS],
-    prev_state: [[bool; COLS]; ROWS],
-    events: heapless::spsc::Queue<KeyEvent, 16>,
-}
+// Define your keymap layers here. 
+// Standard RMK layer array: [Layers][Rows][Columns]
+// Replace the numeric placeholders with your actual RMK keycodes (e.g., KeyCode::A)
+static KEYMAP: [[[u16; COLS]; ROWS]; 1] = [
+    [
+        [1, 2, 3, 4, 5, 6],
+        [7, 8, 9, 10, 11, 12],
+        [13, 14, 15, 16, 17, 18],
+        [19, 20, 21, 22, 23, 24],
+        [25, 26, 27, 28, 29, 30],
+        [31, 32, 33, 34, 35, 36],
+    ]
+];
 
-impl<'d> CheapinoDuplexMatrix<'d> {
-    async fn scan_matrix(&mut self) {
-        let mut current_state = [[false; COLS]; ROWS];
+#[embassy_executor::main]
+async fn main(spawner: Spawner) {
+    // Initialize peripherals using the Embassy HAL
+    let peripherals = hal::init(hal::Config::default());
 
-        // PASS 1: Rows as Outputs (Drive Low), Cols as Inputs
+    // 1. Group the physical GPIO pins exactly from your configuration
+    let row_gpios = [
+        peripherals.GPIO4.degrade(),
+        peripherals.GPIO5.degrade(),
+        peripherals.GPIO6.degrade(),
+        peripherals.GPIO2.degrade(),
+        peripherals.GPIO8.degrade(),
+        peripherals.GPIO9.degrade(),
+    ];
+
+    let col_gpios = [
+        peripherals.GPIO0.degrade(),
+        peripherals.GPIO1.degrade(),
+        peripherals.GPIO3.degrade(),
+        peripherals.GPIO7.degrade(),
+        peripherals.GPIO10.degrade(),
+        peripherals.GPIO20.degrade(),
+    ];
+
+    // 2. Setup baseline RMK Configurations for BLE
+    let config = RmkConfig::default();
+
+    // 3. Start the core RMK Engine 
+    // We pass an empty matrix configuration because we are feeding it manually below
+    let (mut keyboard, _) = initialize_keyboard_with_config(KEYMAP, config).await;
+
+    // 4. Custom Alternating Scan Loop
+    // This actively flips the pins between Inputs and Outputs to catch both diode directions
+    let mut matrix_state = [[KeyState::default(); COLS]; ROWS];
+
+    loop {
+        // --- PASS 1: Scan Forward Diodes (Rows as Outputs, Cols as Inputs) ---
+        let mut outputs: [Output<'_, AnyPin>; ROWS] = row_gpios.iter().map(|pin| {
+            Output::new(pin.clone(), Level::High, Speed::Low)
+        }).collect::<core::prelude::v1::Vec<_, ROWS>>().into_inner().unwrap();
+
+        let inputs: [Input<'_, AnyPin>; COLS] = col_gpios.iter().map(|pin| {
+            Input::new(pin.clone(), Pull::Up)
+        }).collect::<core::prelude::v1::Vec<_, COLS>>().into_inner().unwrap();
+
         for r in 0..ROWS {
-            self.row_pins[r].set_as_output();
-            self.row_pins[r].set_low();
-            Timer::after_micros(5).await;
+            outputs[r].set_low(); // Activate current row
+            Timer::after_micros(5).await; // Settle electrical noise
 
             for c in 0..COLS {
-                self.col_pins[c].set_as_input(Pull::Up);
-                if self.col_pins[c].is_low() {
-                    current_state[r][c] = true;
+                // If input is low, the forward diode switch is physically closed
+                if inputs[c].is_low() {
+                    matrix_state[r][c].pressed = true;
                 }
             }
-            self.row_pins[r].set_high();
-            self.row_pins[r].set_as_input(Pull::Up);
+            outputs[r].set_high(); // Deactivate row
         }
 
-        // PASS 2: Cols as Outputs (Drive Low), Rows as Inputs
+        // Clean up Pass 1 configuration explicitly
+        drop(outputs);
+        drop(inputs);
+
+        // --- PASS 2: Scan Reversed Diodes (Cols as Outputs, Rows as Inputs) ---
+        let mut outputs: [Output<'_, AnyPin>; COLS] = col_gpios.iter().map(|pin| {
+            Output::new(pin.clone(), Level::High, Speed::Low)
+        }).collect::<core::prelude::v1::Vec<_, COLS>>().into_inner().unwrap();
+
+        let inputs: [Input<'_, AnyPin>; ROWS] = row_gpios.iter().map(|pin| {
+            Input::new(pin.clone(), Pull::Up)
+        }).collect::<core::prelude::v1::Vec<_, ROWS>>().into_inner().unwrap();
+
         for c in 0..COLS {
-            self.col_pins[c].set_as_output();
-            self.col_pins[c].set_low();
+            outputs[c].set_low(); // Activate current column as an output
             Timer::after_micros(5).await;
 
             for r in 0..ROWS {
-                self.row_pins[r].set_as_input(Pull::Up);
-                if self.row_pins[r].is_low() {
-                    current_state[r][c] = true;
+                // If row input reads low, the reversed diode switch is physically closed
+                if inputs[r].is_low() {
+                    // Map it carefully into your secondary layout coordinates
+                    matrix_state[r][c].pressed = true; 
                 }
             }
-            self.col_pins[c].set_high();
-            self.col_pins[c].set_as_input(Pull::Up);
+            outputs[c].set_high();
         }
 
+        // Clean up Pass 2 configuration explicitly
+        drop(outputs);
+        drop(inputs);
+
+        // 5. Submit the combined matrix states straight into the RMK core handler
+        keyboard.set_matrix_state(&matrix_state).await;
+
+        // Reset tracking matrix states for the next loop execution
         for r in 0..ROWS {
             for c in 0..COLS {
-                if current_state[r][c] != self.prev_state[r][c] {
-                    let _ = self.events.enqueue(KeyEvent {
-                        row: r as u8,
-                        col: c as u8,
-                        pressed: current_state[r][c],
-                    });
-                    self.prev_state[r][c] = current_state[r][c];
-                }
+                matrix_state[r][c].pressed = false;
             }
         }
+
+        // Delay to prevent pinned CPU thrashing and stabilize keyboard polling rate (1000Hz)
+        Timer::after_millis(1).await;
     }
-}
-
-impl<'d> InputDevice for CheapinoDuplexMatrix<'d> {
-    type Error = Infallible;
-
-    async fn read(&mut self) -> Result<KeyEvent, Self::Error> {
-        loop {
-            if let Some(event) = self.events.dequeue() {
-                return Ok(event);
-            }
-            self.scan_matrix().await;
-            Timer::after_millis(1).await;
-        }
-    }
-}
-
-#[rmk::macros::rmk_keyboard]
-mod keyboard {
-    // Note: You will need to check the RMK 0.8.x documentation on how to 
-    // specifically pass your custom `CheapinoDuplexMatrix` InputDevice into this macro.
 }
