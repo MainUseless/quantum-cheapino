@@ -60,9 +60,12 @@ jobs:
               config::RmkConfig,
               matrix::{Matrix, KeyState},
               storage::Storage,
-              run_rmk,
+              action::KeyAction,
+              keymap::KeyMap,
+              start,
           };
           use core::convert::Infallible;
+          use riscv_rt::entry;
 
           const ROWS: usize = 6;
           const COLS: usize = 6;
@@ -71,12 +74,11 @@ jobs:
               row_pins: [AnyPin<'a>; ROWS],
               col_pins: [AnyPin<'a>; COLS],
               delay: Delay,
+              state: [[KeyState; COLS]; ROWS],
           }
 
           impl<'a> Matrix<COLS, ROWS> for CheapinoDuplexMatrix<'a> {
-              type Error = Infallible;
-
-              fn scan(&mut self) -> Result<[[KeyState; COLS]; ROWS], Self::Error> {
+              fn scan(&mut self) -> Result<[[KeyState; COLS]; ROWS], Infallible> {
                   let mut matrix_state = [[KeyState::default(); COLS]; ROWS];
 
                   // --- PASS 1: Rows as Outputs (Drive Low), Cols as Inputs ---
@@ -145,8 +147,8 @@ jobs:
               }
           }
 
-          #[esp_hal::main]
-          async fn main() -> ! {
+          #[entry]
+          fn main() -> ! {
               let peripherals = esp_hal::peripherals::Peripherals::take();
               let system = peripherals.SYSTEM.split();
               let clocks = esp_hal::clock::ClockControl::boot_defaults(&system.clock_control).freeze();
@@ -175,11 +177,13 @@ jobs:
                   row_pins,
                   col_pins,
                   delay,
+                  state: [[KeyState::default(); COLS]; ROWS],
               };
 
               let config = RmkConfig::default();
               let mut storage = Storage::new(&mut [0; 8192]);
-              run_rmk(my_matrix, &mut storage, config).await;
+              let keymap: KeyMap<COLS, ROWS, 1> = KeyMap::new([[[KeyAction::KeyCode(1); COLS]; ROWS]]);
+              start(my_matrix, keymap, config);
 
               loop {}
           }
