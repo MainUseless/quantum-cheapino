@@ -25,24 +25,167 @@ jobs:
             ~/.cargo/registry/
             ~/.cargo/git/
             target/
-          key: ${{ runner.os }}-cargo-esp32c3-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-esp32c3-${{ hashFiles('**/keyboard.toml') }}
 
-      - name: Install Flashing Tools
+      - name: Install Build Tools
         run: |
+          cargo +stable install rmkit --force
           cargo +stable install espflash --force
+
+      - name: Setup Project Workspace
+        run: |
+          rmkit create --keyboard-toml-path keyboard.toml --vial-json-path vial.json --target-dir rmk
+
+      - name: Inject Custom Alternating Matrix Code
+        run: |
+          cat << 'EOF' > rmk/src/main.rs
+          #![no_std]
+          #![no_main]
+
+          use esp_backtrace as _;
+          use embassy_executor::Spawner;
+          use embassy_time::{Duration, Timer};
+          use hal::{
+              gpio::{Input, Output, Pull, Level, Speed, AnyPin, Pin},
+              peripherals::Peripherals,
+          };
+          use rmk::{
+              config::RmkConfig,
+              initialize_keyboard_with_config,
+              matrix::KeyState,
+          };
+
+          const ROWS: usize = 6;
+          const COLS: usize = 6;
+
+          static KEYMAP: [[[u16; COLS]; ROWS]; 1] = [
+              [
+                  [1, 2, 3, 4, 5, 6],
+                  [7, 8, 9, 10, 11, 12],
+                  [13, 14, 15, 16, 17, 18],
+                  [19, 20, 21, 22, 23, 24],
+                  [25, 26, 27, 28, 29, 30],
+                  [31, 32, 33, 34, 35, 36],
+              ]
+          ];
+
+          #[embassy_executor::main]
+          async fn main(spawner: Spawner) {
+              let peripherals = hal::init(hal::Config::default());
+
+              let row_gpios = [
+                  peripherals.GPIO4.degrade(),
+                  peripherals.GPIO5.degrade(),
+                  peripherals.GPIO6.degrade(),
+                  peripherals.GPIO2.degrade(),
+                  peripherals.GPIO8.degrade(),
+                  peripherals.GPIO9.degrade(),
+              ];
+
+              let col_gpios = [
+                  peripherals.GPIO0.degrade(),
+                  peripherals.GPIO1.degrade(),
+                  peripherals.GPIO3.degrade(),
+                  peripherals.GPIO7.degrade(),
+                  peripherals.GPIO10.degrade(),
+                  peripherals.GPIO20.degrade(),
+              ];
+
+              let config = RmkConfig::default();
+              let (mut keyboard, _) = initialize_keyboard_with_config(KEYMAP, config).await;
+              let mut matrix_state = [[KeyState::default(); COLS]; ROWS];
+
+              loop {
+                  // PASS 1: Rows Output, Cols Input
+                  {
+                      let mut outputs: [Output<'_, AnyPin>; ROWS] = [
+                          Output::new(row_gpios[0].clone(), Level::High, Speed::Low),
+                          Output::new(row_gpios[1].clone(), Level::High, Speed::Low),
+                          Output::new(row_gpios[2].clone(), Level::High, Speed::Low),
+                          Output::new(row_gpios[3].clone(), Level::High, Speed::Low),
+                          Output::new(row_gpios[4].clone(), Level::High, Speed::Low),
+                          Output::new(row_gpios[5].clone(), Level::High, Speed::Low),
+                      ];
+                      let inputs: [Input<'_, AnyPin>; COLS] = [
+                          Input::new(col_gpios[0].clone(), Pull::Up),
+                          Input::new(col_gpios[1].clone(), Pull::Up),
+                          Input::new(col_gpios[2].clone(), Pull::Up),
+                          Input::new(col_gpios[3].clone(), Pull::Up),
+                          Input::new(col_gpios[4].clone(), Pull::Up),
+                          Input::new(col_gpios[5].clone(), Pull::Up),
+                      ];
+
+                      for r in 0..ROWS {
+                          outputs[r].set_low();
+                          Timer::after_micros(5).await;
+                          for c in 0..COLS {
+                              if inputs[c].is_low() {
+                                  matrix_state[r][c].pressed = true;
+                              }
+                          }
+                          outputs[r].set_high();
+                      }
+                  }
+
+                  // PASS 2: Cols Output, Rows Input
+                  {
+                      let mut outputs: [Output<'_, AnyPin>; COLS] = [
+                          Output::new(col_gpios[0].clone(), Level::High, Speed::Low),
+                          Output::new(col_gpios[1].clone(), Level::High, Speed::Low),
+                          Output::new(col_gpios[2].clone(), Level::High, Speed::Low),
+                          Output::new(col_gpios[3].clone(), Level::High, Speed::Low),
+                          Output::new(col_gpios[4].clone(), Level::High, Speed::Low),
+                          Output::new(col_gpios[5].clone(), Level::High, Speed::Low),
+                      ];
+                      let inputs: [Input<'_, AnyPin>; ROWS] = [
+                          Input::new(row_gpios[0].clone(), Pull::Up),
+                          Input::new(row_gpios[1].clone(), Pull::Up),
+                          Input::new(row_gpios[2].clone(), Pull::Up),
+                          Input::new(row_gpios[3].clone(), Pull::Up),
+                          Input::new(row_gpios[4].clone(), Pull::Up),
+                          Input::new(row_gpios[5].clone(), Pull::Up),
+                      ];
+
+                      for c in 0..COLS {
+                          outputs[c].set_low();
+                          Timer::after_micros(5).await;
+                          for r in 0..ROWS {
+                              if inputs[r].is_low() {
+                                  matrix_state[r][c].pressed = true;
+                              }
+                          }
+                          outputs[c].set_high();
+                      }
+                  }
+
+                  keyboard.set_matrix_state(&matrix_state).await;
+
+                  for r in 0..ROWS {
+                      for c in 0..COLS {
+                          matrix_state[r][c].pressed = false;
+                      }
+                  }
+                  Timer::after_millis(1).await;
+              }
+          }
+          EOF
 
       - name: Compile Custom Firmware
         env:
           RUST_MIN_STACK: 16777216
         run: |
+          cd rmk
           cargo +nightly build --release --target riscv32imc-unknown-none-elf
 
       - name: Convert to Flashable Binary
         run: |
-          espflash save-image --chip esp32c3 --merge target/riscv32imc-unknown-none-elf/release/Rust_Cheapino firmware.bin
+          cd rmk
+          # Detect the exact artifact name generated dynamically by rmkit
+          ELF_FILE=$(find target/riscv32imc-unknown-none-elf/release/ -maxdepth 1 -type f ! -name "*.d" ! -name "*.bin" | head -n 1)
+          espflash save-image --chip esp32c3 --merge "$ELF_FILE" firmware.bin
 
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
           name: cheapino-firmware
-          path: firmware.bin
+          path: rmk/firmware.bin
