@@ -19,20 +19,16 @@ col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
 [layout]
 rows = 6
 cols = 6
-layers = 2
+layers = 1
 keymap = [
     [
-        ["A", "B", "C"],
-        ["Kc1", "Kc2", "Kc3"],
-        ["LCtrl", "MO(1)", "LShift"],
-        ["OSL(1)", "LT(2, Kc9)", "LM(1, LShift | LGui)"]
-    ],
-    [
-        ["_", "TT(1)", "TG(2)"],
-        ["_", "_", "_"],
-        ["_", "_", "_"],
-        ["_", "_", "_"]
-    ],
+        ["A", "B", "C", "D", "E", "F"],
+        ["A", "B", "C", "D", "E", "F"],
+        ["A", "B", "C", "D", "E", "F"],
+        ["A", "B", "C", "D", "E", "F"],
+        ["A", "B", "C", "D", "E", "F"],
+        ["A", "B", "C", "D", "E", "F"]
+    ]
 ]
 
 [ble]
