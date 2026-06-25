@@ -35,7 +35,7 @@ jobs:
           # Only install if they aren't already restored from the cache
           if ! command -v rmkit &> /dev/null; then
             cargo install rmkit --force
-           Keene
+          fi
           if ! command -v espflash &> /dev/null; then
             cargo install espflash --force
           fi
