@@ -1,67 +1,39 @@
 [keyboard]
-name = "Rust Cheapino"
-product_name = "Rust Cheapino"
-product_id = 0x0001
-vendor_id = 0x4B42 # "KB" in hex
-manufacturer = "Custom"
+name = "cheapino_w"
+product_name = "cheapino_w"
+vendor_id = 0x4c4b
+product_id = 0x4643
+manufacturer = "RMK"
 chip = "esp32c3"
+usb_enable = false
 
-[backend]
-# Left empty for single-chip matrix configuration
 [matrix]
-rows = 6
-cols = 6
-row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
-col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
-# Swap this to the opposite of whatever you currently have:
-diode_direction = "row2col"
+# Input and output pins are mandatory
+input_pins = ["GPIO6", "GPIO7", "GPIO20", "GPIO21"]
+output_pins = ["GPIO3", "GPIO4", "GPIO5"]
+
+# WARNING: Currently row2col/col2row is set in RMK's feature gate, row2col config here is valid ONLY when you're using cloud compilation.
+# Checkout doc here: https://rmk.rs/docs/user_guide/faq.html#my-matrix-is-row2col-the-matrix-doesn-t-work
+# row2col = true
 
 [layout]
-rows = 6
-cols = 6
-layers = 3
-layers_num = 3
+rows = 4
+cols = 3
+layers = 2
+keymap = [
+    [
+        ["A", "B", "C"],
+        ["Kc1", "Kc2", "Kc3"],
+        ["LCtrl", "MO(1)", "LShift"],
+        ["OSL(1)", "LT(2, Kc9)", "LM(1, LShift | LGui)"]
+    ],
+    [
+        ["_", "TT(1)", "TG(2)"],
+        ["_", "_", "_"],
+        ["_", "_", "_"],
+        ["_", "_", "_"]
+    ],
+]
 
-# String mapping of the electronic matrix to physical keys
-matrix_map = """
-(0,0) (0,1) (0,2) (3,3) (3,4) (3,5)
-(1,0) (1,1) (1,2) (4,3) (4,4) (4,5)
-(2,0) (2,1) (2,2) (5,3) (5,4) (5,5)
-(0,3) (1,3) (2,3) (3,0) (4,0) (5,0)
-(0,4) (1,4) (2,4) (3,1) (4,1) (5,1)
-(0,5) (1,5) (2,5) (3,2) (4,2) (5,2)
-"""
-
-# Base Layer (Layer 0)
-[[layer]]
-name = "base_layer"
-keys = """
-Q      W      E      R      T      Y      U      I      O      P
-A      S      D      F      G      H      J      K      L      SCLN
-Z      X      C      V      B      N      M      COMM   DOT    SLSH
-ESC    SPC    TAB                  ENT    BSPC   MO(1)
-"""
-
-# Lower Layer (Layer 1) - Clear for Vial editing
-[[layer]]
-name = "lower_layer"
-keys = """
-_      _      _      _      _      _      _      _      _      _
-_      _      _      _      _      _      _      _      _      _
-_      _      _      _      _      _      _      _      _      _
-_      _      _                    _      _      _
-"""
-
-# Raise Layer (Layer 2) - Clear for Vial editing
-[[layer]]
-name = "raise_layer"
-keys = """
-_      _      _      _      _      _      _      _      _      _
-_      _      _      _      _      _      _      _      _      _
-_      _      _      _      _      _      _      _      _      _
-_      _      _                    _      _      _
-"""
-
-[vial]
-vial_enabled = true
-vial_id = [0x43, 0x68, 0x65, 0x61, 0x70, 0x69, 0x6E, 0x6F] # "Cheapino" in hex
+[ble]
+enabled = true
