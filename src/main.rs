@@ -54,17 +54,17 @@ fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_L
 
 const SCAN_MAP: [[(usize, usize); COL]; ROW] = [
     // Row 0 (left): Q  W  E  R  T  Space
-    [(11, 3), (3, 10), (10, 3), (3, 9), (9, 3), (3, 11)],
+    [(11, 3), (3, 10), (10, 3), (3, 9), (9, 3), (5, 11)],
     // Row 1 (left): A  S  D  F  G  Tab
     [(11, 4), (4, 10), (10, 4), (4, 9), (9, 4), (4, 11)],
     // Row 2 (left): Z  X  C  V  B  LCtrl
-    [(11, 5), (5, 10), (10, 5), (5, 9), (9, 5), (5, 11)],
+    [(11, 5), (5, 10), (10, 5), (5, 9), (9, 5), (3, 11)],
     // Row 3 (right): Y  U  I  O  P  Enter
-    [(6, 0), (0, 6), (7, 0), (0, 7), (8, 0), (0, 8)],
+    [(6, 0), (0, 6), (7, 0), (0, 7), (8, 0), (2, 8)],
     // Row 4 (right): H  J  K  L  ;  Backspace
     [(6, 1), (1, 6), (7, 1), (1, 7), (8, 1), (1, 8)],
     // Row 5 (right): N  M  ,  .  /  LAlt
-    [(6, 2), (2, 6), (7, 2), (2, 7), (8, 2), (2, 8)],
+    [(6, 2), (2, 6), (7, 2), (2, 7), (8, 2), (0, 8)],
 ];
 
 #[esp_rtos::main]
@@ -109,7 +109,7 @@ async fn main(_s: ::embassy_executor::Spawner) {
 
     // ---- RMK Config ----
     let vial_config =
-        ::rmk::config::VialConfig::new(VIAL_KEYBOARD_ID, VIAL_KEYBOARD_DEF, &[(0, 0), (1, 1)]);
+        ::rmk::config::VialConfig::new(VIAL_KEYBOARD_ID, VIAL_KEYBOARD_DEF, &[]);
     let rmk_config = ::rmk::config::RmkConfig {
         vial_config,
         storage_config,
