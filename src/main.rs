@@ -1,137 +1,189 @@
 #![no_std]
 #![no_main]
 
-use esp_backtrace as _;
+mod keymap;
+#[macro_use]
+mod macros;
+mod vial;
+
+use core::convert::Infallible;
+
+use bt_hci::controller::ExternalController;
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
-use hal::{
-    gpio::{Input, Output, Pull, Level, Speed, AnyPin, Pin},
-    peripherals::Peripherals,
-};
-use rmk::{
-    config::RmkConfig,
-    initialize_keyboard_with_config,
-    matrix::KeyState,
-};
+use embedded_hal::digital::{ErrorType, InputPin, OutputPin};
+use esp_alloc as _;
+use esp_backtrace as _;
+use esp_hal::clock::CpuClock;
+use esp_hal::gpio::{Flex, InputConfig, Pull};
+use esp_hal::interrupt::software::SoftwareInterruptControl;
+use esp_hal::rng::TrngSource;
+use esp_hal::timer::timg::TimerGroup;
+use esp_radio::ble::controller::BleConnector;
+use esp_storage::FlashStorage;
+use rmk::ble::{BleTransport, build_ble_stack};
+use rmk::config::{BehaviorConfig, PositionalConfig, RmkConfig, StorageConfig, VialConfig};
+use rmk::debounce::default_debouncer::DefaultDebouncer;
+use rmk::driver::flex_pin::FlexPin;
+use rmk::host::HostService;
+use rmk::keyboard::Keyboard;
+use rmk::matrix::bidirectional_matrix::{BidirectionalMatrix, ScanLocation};
+use rmk::storage::async_flash_wrapper;
+use rmk::{HostResources, KeymapData, initialize_keymap_and_storage, run_all};
 
-// Define matrix dimensions (Cheapino maps a physical 6x6 grid)
-const ROWS: usize = 6;
-const COLS: usize = 6;
+use crate::keymap::*;
+use crate::vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
 
-// Define your keymap layers here. 
-// Standard RMK layer array: [Layers][Rows][Columns]
-// Replace the numeric placeholders with your actual RMK keycodes (e.g., KeyCode::A)
-static KEYMAP: [[[u16; COLS]; ROWS]; 1] = [
-    [
-        [1, 2, 3, 4, 5, 6],
-        [7, 8, 9, 10, 11, 12],
-        [13, 14, 15, 16, 17, 18],
-        [19, 20, 21, 22, 23, 24],
-        [25, 26, 27, 28, 29, 30],
-        [31, 32, 33, 34, 35, 36],
-    ]
+::esp_bootloader_esp_idf::esp_app_desc!();
+
+// Newtype wrapper: esp-hal Flex pin -> rmk FlexPin trait (orphan rule)
+struct EspFlexPin<'d>(Flex<'d>);
+
+impl ErrorType for EspFlexPin<'_> {
+    type Error = Infallible;
+}
+
+impl InputPin for EspFlexPin<'_> {
+    fn is_high(&mut self) -> Result<bool, Self::Error> {
+        Ok(self.0.is_high())
+    }
+    fn is_low(&mut self) -> Result<bool, Self::Error> {
+        Ok(self.0.is_low())
+    }
+}
+
+impl OutputPin for EspFlexPin<'_> {
+    fn set_high(&mut self) -> Result<(), Self::Error> {
+        self.0.set_high();
+        Ok(())
+    }
+    fn set_low(&mut self) -> Result<(), Self::Error> {
+        self.0.set_low();
+        Ok(())
+    }
+}
+
+impl FlexPin for EspFlexPin<'_> {
+    fn set_as_input(&mut self) {
+        self.0.set_output_enable(false);
+        self.0.apply_input_config(&InputConfig::default().with_pull(Pull::Down));
+        self.0.set_input_enable(true);
+    }
+    fn set_as_output(&mut self) {
+        self.0.set_input_enable(false);
+        self.0.set_low();
+        self.0.set_output_enable(true);
+    }
+}
+
+// =============================================================================
+// Cheapino bidirectional matrix scan map
+// =============================================================================
+//
+// The Cheapino uses 12 GPIO pins wired to a 6x6 logical matrix through
+// alternating diode directions. Each logical key position maps to a specific
+// (input_pin, output_pin) pair — some scan forward (row→col), some reverse
+// (col→row).
+//
+// Pin index assignments:
+//   0: GPIO4  (row0)     6: GPIO0  (col0)
+//   1: GPIO5  (row1)     7: GPIO1  (col1)
+//   2: GPIO6  (row2)     8: GPIO3  (col2)
+//   3: GPIO2  (row3)     9: GPIO7  (col3)
+//   4: GPIO8  (row4)    10: GPIO10 (col4)
+//   5: GPIO9  (row5)    11: GPIO20 (col5)
+//
+// ScanLocation::Pins(in_pin_idx, out_pin_idx)
+//   out_pin drives HIGH, in_pin reads (with pull-down)
+
+use ScanLocation::Pins;
+
+const SCAN_MAP: [[ScanLocation; COL]; ROW] = [
+    // Row 0 (left): Q  W  E  R  T  Space
+    [Pins(3,11), Pins(10,3), Pins(3,10), Pins(9,3), Pins(3,9), Pins(11,3)],
+    // Row 1 (left): A  S  D  F  G  Tab
+    [Pins(4,11), Pins(10,4), Pins(4,10), Pins(9,4), Pins(4,9), Pins(11,4)],
+    // Row 2 (left): Z  X  C  V  B  LCtrl
+    [Pins(5,11), Pins(10,5), Pins(5,10), Pins(9,5), Pins(5,9), Pins(11,5)],
+    // Row 3 (right): Y  U  I  O  P  Enter
+    [Pins(0,6),  Pins(6,0),  Pins(0,7),  Pins(7,0),  Pins(0,8),  Pins(8,0)],
+    // Row 4 (right): H  J  K  L  ;  Backspace
+    [Pins(1,6),  Pins(6,1),  Pins(1,7),  Pins(7,1),  Pins(1,8),  Pins(8,1)],
+    // Row 5 (right): N  M  ,  .  /  LAlt
+    [Pins(2,6),  Pins(6,2),  Pins(2,7),  Pins(7,2),  Pins(2,8),  Pins(8,2)],
 ];
 
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
-    // Initialize peripherals using the Embassy HAL
-    let peripherals = hal::init(hal::Config::default());
+#[esp_rtos::main]
+async fn main(_s: Spawner) {
+    esp_println::logger::init_logger_from_env();
+    let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
+    esp_alloc::heap_allocator!(size: 72 * 1024);
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    let software_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+    esp_rtos::start(timg0.timer0, software_interrupt.software_interrupt0);
+    let _trng_source = TrngSource::new(peripherals.RNG, peripherals.ADC1);
+    let mut rng = esp_hal::rng::Trng::try_new().unwrap();
 
-    // 1. Group the physical GPIO pins exactly from your configuration
-    let row_gpios = [
-        peripherals.GPIO4.degrade(),
-        peripherals.GPIO5.degrade(),
-        peripherals.GPIO6.degrade(),
-        peripherals.GPIO2.degrade(),
-        peripherals.GPIO8.degrade(),
-        peripherals.GPIO9.degrade(),
+    // BLE
+    let connector = BleConnector::new(peripherals.BT, Default::default()).unwrap();
+    let controller: ExternalController<_, 64> = ExternalController::new(connector);
+    let central_addr = [0x18, 0xe2, 0x21, 0x80, 0xc0, 0xc7];
+    let mut host_resources = HostResources::new();
+    let stack = build_ble_stack(controller, central_addr, &mut rng, &mut host_resources).await;
+
+    // Flash
+    let flash = FlashStorage::new(peripherals.FLASH);
+    let flash = async_flash_wrapper(flash);
+
+    // All 12 GPIO pins as flexible I/O for bidirectional scanning
+    let pins: [EspFlexPin; 12] = [
+        EspFlexPin(Flex::new(peripherals.GPIO4)),   // 0: row0
+        EspFlexPin(Flex::new(peripherals.GPIO5)),   // 1: row1
+        EspFlexPin(Flex::new(peripherals.GPIO6)),   // 2: row2
+        EspFlexPin(Flex::new(peripherals.GPIO2)),   // 3: row3
+        EspFlexPin(Flex::new(peripherals.GPIO8)),   // 4: row4
+        EspFlexPin(Flex::new(peripherals.GPIO9)),   // 5: row5
+        EspFlexPin(Flex::new(peripherals.GPIO0)),   // 6: col0
+        EspFlexPin(Flex::new(peripherals.GPIO1)),   // 7: col1
+        EspFlexPin(Flex::new(peripherals.GPIO3)),   // 8: col2
+        EspFlexPin(Flex::new(peripherals.GPIO7)),   // 9: col3
+        EspFlexPin(Flex::new(peripherals.GPIO10)),  // 10: col4
+        EspFlexPin(Flex::new(peripherals.GPIO20)),  // 11: col5
     ];
 
-    let col_gpios = [
-        peripherals.GPIO0.degrade(),
-        peripherals.GPIO1.degrade(),
-        peripherals.GPIO3.degrade(),
-        peripherals.GPIO7.degrade(),
-        peripherals.GPIO10.degrade(),
-        peripherals.GPIO20.degrade(),
-    ];
+    // RMK config
+    let vial_config = VialConfig::new(VIAL_KEYBOARD_ID, VIAL_KEYBOARD_DEF, &[(0, 0), (1, 1)]);
+    let storage_config = StorageConfig {
+        start_addr: 0x3f0000,
+        num_sectors: 16,
+        ..Default::default()
+    };
+    let rmk_config = RmkConfig {
+        vial_config,
+        storage_config,
+        ..Default::default()
+    };
 
-    // 2. Setup baseline RMK Configurations for BLE
-    let config = RmkConfig::default();
+    // Keymap + storage
+    let mut keymap_data = KeymapData::new(keymap::get_default_keymap());
+    let mut behavior_config = BehaviorConfig::default();
+    let per_key_config = PositionalConfig::default();
+    let (keymap, mut storage) = initialize_keymap_and_storage(
+        &mut keymap_data,
+        flash,
+        &storage_config,
+        &mut behavior_config,
+        &per_key_config,
+    )
+    .await;
 
-    // 3. Start the core RMK Engine 
-    // We pass an empty matrix configuration because we are feeding it manually below
-    let (mut keyboard, _) = initialize_keyboard_with_config(KEYMAP, config).await;
+    // Bidirectional matrix for Cheapino's alternating-diode layout
+    let debouncer = DefaultDebouncer::new();
+    let mut matrix = BidirectionalMatrix::<_, _, 12, ROW, COL>::new(pins, debouncer, SCAN_MAP);
 
-    // 4. Custom Alternating Scan Loop
-    // This actively flips the pins between Inputs and Outputs to catch both diode directions
-    let mut matrix_state = [[KeyState::default(); COLS]; ROWS];
+    let mut keyboard = Keyboard::new(&keymap);
+    let host_ctx = rmk::host::KeyboardContext::new(&keymap);
+    let mut host_service = HostService::new(&host_ctx, &rmk_config);
+    let mut ble_transport = BleTransport::new(&stack, rmk_config).await;
 
-    loop {
-        // --- PASS 1: Scan Forward Diodes (Rows as Outputs, Cols as Inputs) ---
-        let mut outputs: [Output<'_, AnyPin>; ROWS] = row_gpios.iter().map(|pin| {
-            Output::new(pin.clone(), Level::High, Speed::Low)
-        }).collect::<core::prelude::v1::Vec<_, ROWS>>().into_inner().unwrap();
-
-        let inputs: [Input<'_, AnyPin>; COLS] = col_gpios.iter().map(|pin| {
-            Input::new(pin.clone(), Pull::Up)
-        }).collect::<core::prelude::v1::Vec<_, COLS>>().into_inner().unwrap();
-
-        for r in 0..ROWS {
-            outputs[r].set_low(); // Activate current row
-            Timer::after_micros(5).await; // Settle electrical noise
-
-            for c in 0..COLS {
-                // If input is low, the forward diode switch is physically closed
-                if inputs[c].is_low() {
-                    matrix_state[r][c].pressed = true;
-                }
-            }
-            outputs[r].set_high(); // Deactivate row
-        }
-
-        // Clean up Pass 1 configuration explicitly
-        drop(outputs);
-        drop(inputs);
-
-        // --- PASS 2: Scan Reversed Diodes (Cols as Outputs, Rows as Inputs) ---
-        let mut outputs: [Output<'_, AnyPin>; COLS] = col_gpios.iter().map(|pin| {
-            Output::new(pin.clone(), Level::High, Speed::Low)
-        }).collect::<core::prelude::v1::Vec<_, COLS>>().into_inner().unwrap();
-
-        let inputs: [Input<'_, AnyPin>; ROWS] = row_gpios.iter().map(|pin| {
-            Input::new(pin.clone(), Pull::Up)
-        }).collect::<core::prelude::v1::Vec<_, ROWS>>().into_inner().unwrap();
-
-        for c in 0..COLS {
-            outputs[c].set_low(); // Activate current column as an output
-            Timer::after_micros(5).await;
-
-            for r in 0..ROWS {
-                // If row input reads low, the reversed diode switch is physically closed
-                if inputs[r].is_low() {
-                    // Map it carefully into your secondary layout coordinates
-                    matrix_state[r][c].pressed = true; 
-                }
-            }
-            outputs[c].set_high();
-        }
-
-        // Clean up Pass 2 configuration explicitly
-        drop(outputs);
-        drop(inputs);
-
-        // 5. Submit the combined matrix states straight into the RMK core handler
-        keyboard.set_matrix_state(&matrix_state).await;
-
-        // Reset tracking matrix states for the next loop execution
-        for r in 0..ROWS {
-            for c in 0..COLS {
-                matrix_state[r][c].pressed = false;
-            }
-        }
-
-        // Delay to prevent pinned CPU thrashing and stabilize keyboard polling rate (1000Hz)
-        Timer::after_millis(1).await;
-    }
+    run_all!(matrix, storage, ble_transport, keyboard, host_service).await;
 }

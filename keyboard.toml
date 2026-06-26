@@ -9,30 +9,59 @@ usb_enable = false
 
 [matrix]
 # Input and output pins are mandatory
-input_pins = ["GPIO6", "GPIO7", "GPIO20", "GPIO21"]
-output_pins = ["GPIO3", "GPIO4", "GPIO5"]
+row_pins = ["GPIO4", "GPIO5", "GPIO6", "GPIO2", "GPIO8", "GPIO9"]
+col_pins = ["GPIO0", "GPIO1", "GPIO3", "GPIO7", "GPIO10", "GPIO20"]
 
 # WARNING: Currently row2col/col2row is set in RMK's feature gate, row2col config here is valid ONLY when you're using cloud compilation.
 # Checkout doc here: https://rmk.rs/docs/user_guide/faq.html#my-matrix-is-row2col-the-matrix-doesn-t-work
 # row2col = true
 
 [layout]
-rows = 4
-cols = 3
-layers = 2
+rows = 6
+cols = 6
+layers = 4
 keymap = [
+    # ================= LAYER 0: Base QWERTY =================
     [
-        ["A", "B", "C"],
-        ["Kc1", "Kc2", "Kc3"],
-        ["LCtrl", "MO(1)", "LShift"],
-        ["OSL(1)", "LT(2, Kc9)", "LM(1, LShift | LGui)"]
+        # Left Hand & Left Thumbs
+        ["Q", "W", "E", "R", "T", "Space"],
+        ["A", "S", "D", "F", "G", "Tab"],
+        ["Z", "X", "C", "V", "B", "LCtrl"],
+        # Right Hand & Right Thumbs
+        ["Y", "U", "I", "O", "P", "Enter"],
+        ["H", "J", "K", "L", "Semicolon", "Backspace"],
+        ["N", "M", "Comma", "Dot", "Slash", "LAlt"]
     ],
+    
+    # ================= LAYER 1: Empty =================
     [
-        ["_", "TT(1)", "TG(2)"],
-        ["_", "_", "_"],
-        ["_", "_", "_"],
-        ["_", "_", "_"]
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"]
     ],
+
+    # ================= LAYER 2: Empty =================
+    [
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"]
+    ],
+
+    # ================= LAYER 3: Empty =================
+    [
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"],
+        ["_", "_", "_", "_", "_", "_"]
+    ]
 ]
 
 [ble]
