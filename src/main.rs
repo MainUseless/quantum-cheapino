@@ -109,12 +109,7 @@ async fn main(_s: ::embassy_executor::Spawner) {
 
     // ---- RMK Config ----
     let vial_config =
-        ::rmk::config::VialConfig {
-            vial_keyboard_id: VIAL_KEYBOARD_ID,
-            vial_keyboard_def: VIAL_KEYBOARD_DEF,
-            unlock_keys: &[],
-            vial_insecure: true,
-        };
+        ::rmk::config::VialConfig::new(VIAL_KEYBOARD_ID, VIAL_KEYBOARD_DEF, &[(0, 0), (1, 1)]);
     let rmk_config = ::rmk::config::RmkConfig {
         vial_config,
         storage_config,
