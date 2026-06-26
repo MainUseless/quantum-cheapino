@@ -66,3 +66,5 @@ keymap = [
 
 [ble]
 enabled = true
+# Seconds of inactivity before entering deep sleep (0 = never)
+# ble_sleep_timeout = 600
