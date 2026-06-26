@@ -54,17 +54,17 @@ fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_L
 
 const SCAN_MAP: [[(usize, usize); COL]; ROW] = [
     // Row 0 (left): Q  W  E  R  T  Space
-    [(3, 11), (10, 3), (3, 10), (9, 3), (3, 9), (11, 3)],
+    [(11, 3), (3, 10), (10, 3), (3, 9), (9, 3), (3, 11)],
     // Row 1 (left): A  S  D  F  G  Tab
-    [(4, 11), (10, 4), (4, 10), (9, 4), (4, 9), (11, 4)],
+    [(11, 4), (4, 10), (10, 4), (4, 9), (9, 4), (4, 11)],
     // Row 2 (left): Z  X  C  V  B  LCtrl
-    [(5, 11), (10, 5), (5, 10), (9, 5), (5, 9), (11, 5)],
+    [(11, 5), (5, 10), (10, 5), (5, 9), (9, 5), (5, 11)],
     // Row 3 (right): Y  U  I  O  P  Enter
-    [(0, 6), (6, 0), (0, 7), (7, 0), (0, 8), (8, 0)],
+    [(6, 0), (0, 6), (7, 0), (0, 7), (8, 0), (0, 8)],
     // Row 4 (right): H  J  K  L  ;  Backspace
-    [(1, 6), (6, 1), (1, 7), (7, 1), (1, 8), (8, 1)],
+    [(6, 1), (1, 6), (7, 1), (1, 7), (8, 1), (1, 8)],
     // Row 5 (right): N  M  ,  .  /  LAlt
-    [(2, 6), (6, 2), (2, 7), (7, 2), (2, 8), (8, 2)],
+    [(6, 2), (2, 6), (7, 2), (2, 7), (8, 2), (2, 8)],
 ];
 
 #[esp_rtos::main]
@@ -148,12 +148,12 @@ async fn main(_s: ::embassy_executor::Spawner) {
         ::esp_hal::gpio::Flex::new(p.GPIO20), // 11: col5
     ];
 
-    // Init all pins as inputs with pull-down
+    // Init all pins as inputs with pull-up (active LOW scanning, matching Cheapino QMK)
     for pin in pins.iter_mut() {
         pin.set_output_enable(false);
         pin.apply_input_config(
             &::esp_hal::gpio::InputConfig::default()
-                .with_pull(::esp_hal::gpio::Pull::Down),
+                .with_pull(::esp_hal::gpio::Pull::Up),
         );
         pin.set_input_enable(true);
     }
@@ -180,24 +180,22 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
             for col in 0..COL {
                 let (out_idx, in_idx) = SCAN_MAP[row][col];
 
-                // Drive output HIGH
+                // Drive output LOW (active LOW scanning, matching Cheapino QMK)
                 pins[out_idx].set_input_enable(false);
                 pins[out_idx].set_low();
                 pins[out_idx].set_output_enable(true);
-                pins[out_idx].set_high();
 
                 // Brief settle time
                 ::rmk::embassy_futures::yield_now().await;
 
-                // Read input
-                let pressed = pins[in_idx].is_high();
+                // Read input — LOW = pressed (active LOW with pull-ups)
+                let pressed = pins[in_idx].is_low();
 
-                // Restore output pin to input mode
-                pins[out_idx].set_low();
+                // Restore output pin to input mode with pull-up
                 pins[out_idx].set_output_enable(false);
                 pins[out_idx].apply_input_config(
                     &::esp_hal::gpio::InputConfig::default()
-                        .with_pull(::esp_hal::gpio::Pull::Down),
+                        .with_pull(::esp_hal::gpio::Pull::Up),
                 );
                 pins[out_idx].set_input_enable(true);
 
