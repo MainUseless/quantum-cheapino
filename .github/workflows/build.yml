@@ -44,6 +44,10 @@ jobs:
         run: |
           rmkit create --keyboard-toml-path keyboard.toml --vial-json-path vial.json --target-dir rmk
 
+      - name: Inject Custom Bidirectional Matrix
+        run: |
+          cp src/main.rs rmk/src/main.rs
+
       - name: Compile Custom Firmware
         env:
           RUST_MIN_STACK: 16777216
