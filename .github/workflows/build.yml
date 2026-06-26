@@ -44,22 +44,6 @@ jobs:
         run: |
           rmkit create --keyboard-toml-path keyboard.toml --vial-json-path vial.json --target-dir rmk
 
-      - name: Dump Generated Project Structure
-        run: |
-          echo "=== FILES ==="
-          find rmk/src -type f
-          echo "=== CARGO.TOML ==="
-          cat rmk/Cargo.toml
-          echo "=== MAIN.RS ==="
-          cat rmk/src/main.rs
-          echo "=== OTHER SRC FILES ==="
-          for f in rmk/src/*.rs; do
-            if [ "$f" != "rmk/src/main.rs" ]; then
-              echo "--- $f ---"
-              cat "$f"
-            fi
-          done
-
       - name: Inject Custom Bidirectional Matrix
         run: |
           cp src/main.rs rmk/src/main.rs
