@@ -47,12 +47,12 @@ jobs:
       - name: Inject Custom Bidirectional Matrix
         run: |
           cp src/main.rs rmk/src/main.rs
-          # Enable vial_lock feature for Vial matrix tester (pulls in host_security)
+          # Add vial_lock feature for Vial matrix tester (pulls in host_security)
           python3 -c "
           import re
           with open('rmk/Cargo.toml') as f: t = f.read()
           if 'vial_lock' not in t:
-              t = re.sub(r'(rmk\s*=\s*\{)', r'\1 features = [\"vial_lock\"],', t, count=1)
+              t = re.sub(r'(features\s*=\s*\[)', r'\1\"vial_lock\", ', t, count=1)
           with open('rmk/Cargo.toml', 'w') as f: f.write(t)
           "
           cat rmk/Cargo.toml
