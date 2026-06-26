@@ -16,11 +16,10 @@ const NUM_LAYER: usize = 4;
 
 // Default keymap matching keyboard.toml
 fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_LAYER] {
-    use ::rmk::types::action::KeyAction;
+    use ::rmk::types::action::{Action, KeyAction};
     use ::rmk::types::keycode::KeyCode::*;
-    const T: KeyAction = KeyAction::Transparent;
-    const N: KeyAction = KeyAction::No;
-    let k = |kc| KeyAction::Single(::rmk::types::action::Action::Key(kc));
+    const TRNS: KeyAction = KeyAction::Transparent;
+    let k = |kc| KeyAction::Single(Action::Key(kc));
     [
         // Layer 0: Base QWERTY
         [
@@ -31,10 +30,10 @@ fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_L
             [k(H),         k(J),     k(K),     k(L),    k(Semicolon), k(Backspace)],
             [k(N),         k(M),     k(Comma), k(Dot),  k(Slash),     k(LAlt)],
         ],
-        // Layer 1-3: Empty
-        [[T; COL]; ROW],
-        [[T; COL]; ROW],
-        [[T; COL]; ROW],
+        // Layers 1-3: Transparent
+        [[TRNS; COL]; ROW],
+        [[TRNS; COL]; ROW],
+        [[TRNS; COL]; ROW],
     ]
 }
 
@@ -55,17 +54,17 @@ fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_L
 
 const SCAN_MAP: [[(usize, usize); COL]; ROW] = [
     // Row 0 (left): Q  W  E  R  T  Space
-    [(11,3), (3,10), (10,3), (3,9), (9,3), (3,11)],
+    [(11, 3), (3, 10), (10, 3), (3, 9), (9, 3), (3, 11)],
     // Row 1 (left): A  S  D  F  G  Tab
-    [(11,4), (4,10), (10,4), (4,9), (9,4), (4,11)],
+    [(11, 4), (4, 10), (10, 4), (4, 9), (9, 4), (4, 11)],
     // Row 2 (left): Z  X  C  V  B  LCtrl
-    [(11,5), (5,10), (10,5), (5,9), (9,5), (5,11)],
+    [(11, 5), (5, 10), (10, 5), (5, 9), (9, 5), (5, 11)],
     // Row 3 (right): Y  U  I  O  P  Enter
-    [(6,0),  (0,6),  (7,0),  (0,7),  (8,0),  (0,8)],
+    [(6, 0), (0, 6), (7, 0), (0, 7), (8, 0), (0, 8)],
     // Row 4 (right): H  J  K  L  ;  Backspace
-    [(6,1),  (1,6),  (7,1),  (1,7),  (8,1),  (1,8)],
+    [(6, 1), (1, 6), (7, 1), (1, 7), (8, 1), (1, 8)],
     // Row 5 (right): N  M  ,  .  /  LAlt
-    [(6,2),  (2,6),  (7,2),  (2,7),  (8,2),  (2,8)],
+    [(6, 2), (2, 6), (7, 2), (2, 7), (8, 2), (2, 8)],
 ];
 
 #[esp_rtos::main]
@@ -118,15 +117,15 @@ async fn main(_s: ::embassy_executor::Spawner) {
     };
 
     // ---- Keymap + Storage ----
-    let mut keymap_data = ::rmk::keymap::KeymapData::new(get_default_keymap());
+    let mut default_keymap = get_default_keymap();
     let mut behavior_config = ::rmk::config::BehaviorConfig::default();
-    let per_key_config = ::rmk::config::PositionalConfig::default();
+    let mut per_key_config = ::rmk::config::PositionalConfig::default();
     let (keymap, mut storage) = ::rmk::initialize_keymap_and_storage(
-        &mut keymap_data,
+        &mut default_keymap,
         flash,
         &storage_config,
         &mut behavior_config,
-        &per_key_config,
+        &mut per_key_config,
     )
     .await;
 
@@ -170,9 +169,6 @@ async fn main(_s: ::embassy_executor::Spawner) {
 }
 
 /// Bidirectional matrix scanner for Cheapino
-///
-/// Scans all 36 key positions by driving each output pin HIGH one at a time
-/// and reading the corresponding input pin. Debounces and publishes events.
 async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
     use ::rmk::debounce::DebouncerTrait;
 
@@ -191,7 +187,7 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
                 pins[out_idx].set_high();
 
                 // Brief settle time
-                ::rmk::embassy_time::Timer::after_micros(1).await;
+                ::rmk::embassy_futures::yield_now().await;
 
                 // Read input
                 let pressed = pins[in_idx].is_high();
@@ -204,9 +200,6 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
                         .with_pull(::esp_hal::gpio::Pull::Down),
                 );
                 pins[out_idx].set_input_enable(true);
-
-                // Brief settle after restoring
-                ::rmk::embassy_time::Timer::after_micros(1).await;
 
                 // Debounce
                 let debounce_state = debouncer.detect_change_with_debounce(
@@ -223,12 +216,12 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
                         col as u8,
                         key_state[row][col].pressed,
                     );
-                    ::rmk::event::publish_event_async(event).await;
+                    ::rmk::channel::KEY_EVENT_CHANNEL.send(event).await;
                 }
             }
         }
 
-        // ~1ms scan interval for ~1000Hz polling
-        ::rmk::embassy_time::Timer::after_millis(1).await;
+        // Yield to let other tasks run between full scans
+        ::rmk::embassy_futures::yield_now().await;
     }
 }
