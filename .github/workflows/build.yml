@@ -53,6 +53,8 @@ jobs:
           with open('rmk/Cargo.toml') as f: t = f.read()
           if 'vial_lock' not in t:
               t = re.sub(r'(features\s*=\s*\[)', r'\1\"vial_lock\", ', t, count=1)
+          if 'embassy-time' not in t:
+              t = t.rstrip() + '\nembassy-time = \"0.4\"\n'
           with open('rmk/Cargo.toml', 'w') as f: f.write(t)
           "
           cat rmk/Cargo.toml
