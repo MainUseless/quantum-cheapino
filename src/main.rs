@@ -190,20 +190,14 @@ async fn main(_s: ::embassy_executor::Spawner) {
     .await;
 }
 
-/// Busy-wait delay in milliseconds using RISC-V cycle counter.
-/// At 80MHz, 1ms = 80_000 cycles.
+/// Busy-wait delay in milliseconds using a volatile loop.
+/// Tuned for 80MHz ESP32-C3 (~4 cycles per iteration).
 #[inline(never)]
 fn busy_wait_ms(ms: u32) {
-    const CYCLES_PER_MS: u32 = 80_000;
-    let total = ms * CYCLES_PER_MS;
-    let start: u32;
-    unsafe { core::arch::asm!("csrr {}, mcycle", out(reg) start) };
-    loop {
-        let now: u32;
-        unsafe { core::arch::asm!("csrr {}, mcycle", out(reg) now) };
-        if now.wrapping_sub(start) >= total {
-            break;
-        }
+    const ITERS_PER_MS: u32 = 20_000; // 80MHz / ~4 cycles per loop iteration
+    let total = ms * ITERS_PER_MS;
+    for _ in 0..total {
+        unsafe { core::ptr::read_volatile(&0u8) };
     }
 }
 
