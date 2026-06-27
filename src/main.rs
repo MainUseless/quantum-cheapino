@@ -183,23 +183,14 @@ async fn main(_s: ::embassy_executor::Spawner) {
     .await;
 }
 
-// 10 minutes idle timeout in milliseconds
-const IDLE_TIMEOUT_MS: u64 = 10 * 60 * 1000;
-// Slow scan interval when idle (100ms = 10Hz, very low power)
-const IDLE_SCAN_INTERVAL_MS: u64 = 100;
-
 /// Bidirectional matrix scanner for Cheapino
 async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
     use ::rmk::debounce::DebouncerTrait;
 
     let mut debouncer = ::rmk::debounce::default_debouncer::DefaultDebouncer::<ROW, COL>::new();
     let mut key_state = [[::rmk::matrix::KeyState::new(); COL]; ROW];
-    let mut last_activity = ::embassy_time::Instant::now();
-    let mut idle = false;
 
     loop {
-        let mut any_pressed = false;
-
         for row in 0..ROW {
             for col in 0..COL {
                 let (out_idx, in_idx) = SCAN_MAP[row][col];
@@ -223,10 +214,6 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
                 );
                 pins[out_idx].set_input_enable(true);
 
-                if pressed {
-                    any_pressed = true;
-                }
-
                 // Debounce
                 let debounce_state = debouncer.detect_change_with_debounce(
                     row,
@@ -247,19 +234,8 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
             }
         }
 
-        // Track activity for idle detection
-        if any_pressed {
-            last_activity = ::embassy_time::Instant::now();
-            idle = false;
-        } else if !idle && last_activity.elapsed().as_millis() > IDLE_TIMEOUT_MS {
-            idle = true;
-        }
-
-        // Idle: scan at 10Hz. Active: scan at 1000Hz.
-        if idle {
-            ::embassy_time::Timer::after_millis(IDLE_SCAN_INTERVAL_MS).await;
-        } else {
-            ::embassy_time::Timer::after_millis(1).await;
-        }
+        // Yield between scan cycles — 36 yields per cycle (one per key) already
+        // pace the loop. This extra yield ensures other tasks get CPU time.
+        ::rmk::embassy_futures::yield_now().await;
     }
 }
