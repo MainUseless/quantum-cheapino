@@ -54,7 +54,7 @@ jobs:
           if 'vial_lock' not in t:
               t = re.sub(r'(features\s*=\s*\[)', r'\1\"vial_lock\", ', t, count=1)
           if 'embassy-time' not in t:
-              t = re.sub(r'(\[dependencies\])', r'\1\nembassy-time = \"0.4\"', t, count=1)
+              t = re.sub(r'(\[dependencies\])', r'\1\nembassy-time = \"0.5\"', t, count=1)
           with open('rmk/Cargo.toml', 'w') as f: f.write(t)
           "
           cat rmk/Cargo.toml
