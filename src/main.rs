@@ -14,24 +14,39 @@ const ROW: usize = 6;
 const COL: usize = 6;
 const NUM_LAYER: usize = 4;
 
-// Default keymap matching keyboard.toml
+// Default keymap from quantum cheapino.vil
 fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_LAYER] {
-    use ::rmk::types::action::{Action, KeyAction};
+    use ::rmk::types::action::{Action, KeyAction, MorseProfile};
     use ::rmk::types::keycode::KeyCode::*;
     const TRNS: KeyAction = KeyAction::Transparent;
+    const NO: KeyAction = KeyAction::No;
     let k = |kc| KeyAction::Single(Action::Key(kc));
+    let mt = |tap_kc, hold_kc| KeyAction::TapHold(
+        Action::Key(tap_kc), Action::Modifier(hold_kc.into()), MorseProfile::default(),
+    );
+    let lt = |layer, tap_kc| KeyAction::TapHold(
+        Action::Key(tap_kc), Action::LayerOn(layer), MorseProfile::default(),
+    );
     [
-        // Layer 0: Base QWERTY
+        // Layer 0: Base
         [
-            [k(Q),         k(W),     k(E),     k(R),    k(T),         k(Space)],
-            [k(A),         k(S),     k(D),     k(F),    k(G),         k(Tab)],
-            [k(Z),         k(X),     k(C),     k(V),    k(B),         k(LCtrl)],
-            [k(Y),         k(U),     k(I),     k(O),    k(P),         k(Enter)],
-            [k(H),         k(J),     k(K),     k(L),    k(Semicolon), k(Backspace)],
-            [k(N),         k(M),     k(Comma), k(Dot),  k(Slash),     k(LAlt)],
+            [k(Q),    k(W),     k(E),          k(R),     k(T),         mt(Escape, LShift)],
+            [k(A),    k(S),     k(D),          k(F),     lt(1, G),     k(LCtrl)],
+            [k(Z),    k(X),     k(C),          k(V),     k(B),         k(LCtrl)],
+            [k(Y),    k(U),     k(I),          k(O),     k(P),         lt(1, Space)],
+            [k(H),    k(J),     k(K),          k(L),     k(Semicolon), mt(Enter, LAlt)],
+            [k(N),    k(M),     k(LeftBracket), k(RightBracket), k(Slash), k(Backspace)],
         ],
-        // Layers 1-3: Transparent
-        [[TRNS; COL]; ROW],
+        // Layer 1: Numbers, Navigation, BT
+        [
+            [k(Kc1),      k(Kc2),    k(Kc3),    k(Kc4),    k(Kc5),      TRNS],
+            [k(Tab),      k(Equal),  k(Minus),  k(Quote),  k(Backslash), TRNS],
+            [k(Grave),    NO,        KeyAction::Single(Action::User(0)), KeyAction::Single(Action::User(1)), KeyAction::Single(Action::User(2)), TRNS],
+            [k(Kc6),      k(Kc7),    k(Kc8),    k(Kc9),    k(Kc0),      TRNS],
+            [k(PageUp),   k(Left),   k(Up),     k(Down),   k(Right),     TRNS],
+            [k(PageDown), NO,        NO,        k(Comma),  k(Dot),       k(Delete)],
+        ],
+        // Layers 2-3: Transparent
         [[TRNS; COL]; ROW],
         [[TRNS; COL]; ROW],
     ]
@@ -73,7 +88,7 @@ async fn main(_s: ::embassy_executor::Spawner) {
     ::esp_println::logger::init_logger_from_env();
     let p = ::esp_hal::init(
         ::esp_hal::Config::default()
-            .with_cpu_clock(::esp_hal::clock::CpuClock::max()),
+            .with_cpu_clock(::esp_hal::clock::CpuClock::_80MHz),
     );
     ::esp_alloc::heap_allocator!(size: 72 * 1024);
     let timg0 = ::esp_hal::timer::timg::TimerGroup::new(p.TIMG0);
@@ -168,14 +183,23 @@ async fn main(_s: ::embassy_executor::Spawner) {
     .await;
 }
 
+// 10 minutes idle timeout in milliseconds
+const IDLE_TIMEOUT_MS: u64 = 10 * 60 * 1000;
+// Slow scan interval when idle (100ms = 10Hz, very low power)
+const IDLE_SCAN_INTERVAL_MS: u64 = 100;
+
 /// Bidirectional matrix scanner for Cheapino
 async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
     use ::rmk::debounce::DebouncerTrait;
 
     let mut debouncer = ::rmk::debounce::default_debouncer::DefaultDebouncer::<ROW, COL>::new();
     let mut key_state = [[::rmk::matrix::KeyState::new(); COL]; ROW];
+    let mut last_activity = ::rmk::embassy_time::Instant::now();
+    let mut idle = false;
 
     loop {
+        let mut any_pressed = false;
+
         for row in 0..ROW {
             for col in 0..COL {
                 let (out_idx, in_idx) = SCAN_MAP[row][col];
@@ -199,6 +223,10 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
                 );
                 pins[out_idx].set_input_enable(true);
 
+                if pressed {
+                    any_pressed = true;
+                }
+
                 // Debounce
                 let debounce_state = debouncer.detect_change_with_debounce(
                     row,
@@ -219,7 +247,19 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
             }
         }
 
-        // Yield to let other tasks run between full scans
-        ::rmk::embassy_futures::yield_now().await;
+        // Track activity for idle detection
+        if any_pressed {
+            last_activity = ::rmk::embassy_time::Instant::now();
+            idle = false;
+        } else if !idle && last_activity.elapsed().as_millis() > IDLE_TIMEOUT_MS {
+            idle = true;
+        }
+
+        // Idle: scan at 10Hz. Active: scan at 1000Hz.
+        if idle {
+            ::rmk::embassy_time::Timer::after_millis(IDLE_SCAN_INTERVAL_MS).await;
+        } else {
+            ::rmk::embassy_time::Timer::after_millis(1).await;
+        }
     }
 }
