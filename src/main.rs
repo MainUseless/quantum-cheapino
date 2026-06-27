@@ -190,81 +190,135 @@ async fn main(_s: ::embassy_executor::Spawner) {
     .await;
 }
 
-/// Bidirectional matrix scanner for Cheapino with adaptive scan rate:
-/// - Active:    500Hz (2ms)  — typing detected
-/// - Idle:       20Hz (50ms) — 30s no activity
-/// - Deep idle:   2Hz (500ms) — 10 min no activity
-async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
-    use ::rmk::debounce::DebouncerTrait;
+// Output pins driven LOW for quick-detect (covers both halves)
+const WAKE_OUT_PINS: [usize; 6] = [3, 4, 5, 6, 7, 8];
+// Input pins checked for LOW = key pressed
+const WAKE_IN_PINS: [usize; 6] = [0, 1, 2, 9, 10, 11];
 
+/// Quick-detect: drive output pins LOW, check if any input is LOW.
+/// 6 checks instead of 36 — much lighter than full scan.
+fn quick_detect_any_pressed(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> bool {
+    let pull_up = ::esp_hal::gpio::InputConfig::default()
+        .with_pull(::esp_hal::gpio::Pull::Up);
+
+    // Drive output pins LOW
+    for &idx in &WAKE_OUT_PINS {
+        pins[idx].set_input_enable(false);
+        pins[idx].set_low();
+        pins[idx].set_output_enable(true);
+    }
+
+    // Small settle delay (volatile reads as NOP)
+    for _ in 0..100 {
+        unsafe { core::ptr::read_volatile(&0u8) };
+    }
+
+    // Check input pins
+    let mut pressed = false;
+    for &idx in &WAKE_IN_PINS {
+        if pins[idx].is_low() {
+            pressed = true;
+            break;
+        }
+    }
+
+    // Restore output pins to input with pull-up
+    for &idx in &WAKE_OUT_PINS {
+        pins[idx].set_output_enable(false);
+        pins[idx].apply_input_config(&pull_up);
+        pins[idx].set_input_enable(true);
+    }
+
+    pressed
+}
+
+/// Full matrix scan — reads all 36 keys with debouncing.
+async fn full_scan(
+    pins: &mut [::esp_hal::gpio::Flex<'_>; 12],
+    debouncer: &mut ::rmk::debounce::default_debouncer::DefaultDebouncer<ROW, COL>,
+    key_state: &mut [[::rmk::matrix::KeyState; COL]; ROW],
+) -> bool {
+    use ::rmk::debounce::DebouncerTrait;
+    let mut any_pressed = false;
+
+    for row in 0..ROW {
+        for col in 0..COL {
+            let (out_idx, in_idx) = SCAN_MAP[row][col];
+
+            pins[out_idx].set_input_enable(false);
+            pins[out_idx].set_low();
+            pins[out_idx].set_output_enable(true);
+
+            ::rmk::embassy_futures::yield_now().await;
+
+            let pressed = pins[in_idx].is_low();
+
+            pins[out_idx].set_output_enable(false);
+            pins[out_idx].apply_input_config(
+                &::esp_hal::gpio::InputConfig::default()
+                    .with_pull(::esp_hal::gpio::Pull::Up),
+            );
+            pins[out_idx].set_input_enable(true);
+
+            if pressed {
+                any_pressed = true;
+            }
+
+            let debounce_state = debouncer.detect_change_with_debounce(
+                row, col, pressed, &key_state[row][col],
+            );
+
+            if let ::rmk::debounce::DebounceState::Debounced = debounce_state {
+                key_state[row][col].toggle_pressed();
+                let event = ::rmk::event::KeyboardEvent::key(
+                    row as u8, col as u8, key_state[row][col].pressed,
+                );
+                ::rmk::channel::KEY_EVENT_CHANNEL.send(event).await;
+            }
+        }
+    }
+    any_pressed
+}
+
+/// Bidirectional matrix scanner with interrupt-style idle:
+/// - Active:    500Hz full scan — typing detected
+/// - Idle:       20Hz full scan — 30s no activity
+/// - Deep idle: quick-detect only every 50ms, full scan on detect
+async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
     let mut debouncer = ::rmk::debounce::default_debouncer::DefaultDebouncer::<ROW, COL>::new();
     let mut key_state = [[::rmk::matrix::KeyState::new(); COL]; ROW];
     let mut idle_scans: u32 = 0;
 
     loop {
-        let mut any_pressed = false;
+        let sleep_ms;
 
-        for row in 0..ROW {
-            for col in 0..COL {
-                let (out_idx, in_idx) = SCAN_MAP[row][col];
-
-                // Drive output LOW (active LOW scanning, matching Cheapino QMK)
-                pins[out_idx].set_input_enable(false);
-                pins[out_idx].set_low();
-                pins[out_idx].set_output_enable(true);
-
-                // Brief settle time
-                ::rmk::embassy_futures::yield_now().await;
-
-                // Read input — LOW = pressed (active LOW with pull-ups)
-                let pressed = pins[in_idx].is_low();
-
-                // Restore output pin to input mode with pull-up
-                pins[out_idx].set_output_enable(false);
-                pins[out_idx].apply_input_config(
-                    &::esp_hal::gpio::InputConfig::default()
-                        .with_pull(::esp_hal::gpio::Pull::Up),
-                );
-                pins[out_idx].set_input_enable(true);
-
-                if pressed {
-                    any_pressed = true;
-                }
-
-                // Debounce
-                let debounce_state = debouncer.detect_change_with_debounce(
-                    row,
-                    col,
-                    pressed,
-                    &key_state[row][col],
-                );
-
-                if let ::rmk::debounce::DebounceState::Debounced = debounce_state {
-                    key_state[row][col].toggle_pressed();
-                    let event = ::rmk::event::KeyboardEvent::key(
-                        row as u8,
-                        col as u8,
-                        key_state[row][col].pressed,
-                    );
-                    ::rmk::channel::KEY_EVENT_CHANNEL.send(event).await;
-                }
+        if idle_scans >= 27_000 {
+            // Deep idle: lightweight quick-detect only
+            if quick_detect_any_pressed(pins) {
+                // Key detected — do full scan and go active
+                full_scan(pins, &mut debouncer, &mut key_state).await;
+                idle_scans = 0;
+                sleep_ms = 2;
+            } else {
+                sleep_ms = 50; // Check 20 times/sec with minimal CPU
             }
+        } else {
+            // Active / light idle: full matrix scan
+            let any_pressed = full_scan(pins, &mut debouncer, &mut key_state).await;
+
+            if any_pressed {
+                idle_scans = 0;
+            } else {
+                idle_scans = idle_scans.saturating_add(1);
+            }
+
+            sleep_ms = if idle_scans < 15_000 {
+                2   // Active: 500Hz
+            } else {
+                50  // Idle: 20Hz (30s–~10min)
+            };
         }
 
-        if any_pressed {
-            idle_scans = 0;
-        } else {
-            idle_scans = idle_scans.saturating_add(1);
-        }
-
-        // Adaptive sleep — CPU enters WFI during wait
-        let sleep_ms = if idle_scans < 15_000 {
-            2   // Active: 500Hz (first 30s at 500 scans/s)
-        } else if idle_scans < 27_000 {
-            50  // Idle: 20Hz (30s–10min, 12000 scans at 20/s = 10min)
-        } else {
-            500 // Deep idle: 2Hz (after 10 min)
-        };
         ::embassy_time::Timer::after_millis(sleep_ms).await;
     }
 }
