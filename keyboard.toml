@@ -21,26 +21,24 @@ rows = 6
 cols = 6
 layers = 4
 keymap = [
-    # ================= LAYER 0: Base QWERTY =================
+    # ================= LAYER 0: Base =================
     [
-        # Left Hand & Left Thumbs
-        ["Q", "W", "E", "R", "T", "Space"],
-        ["A", "S", "D", "F", "G", "Tab"],
+        ["Q", "W", "E", "R", "T", "MT(Escape, LShift)"],
+        ["A", "S", "D", "F", "LT(1, G)", "LCtrl"],
         ["Z", "X", "C", "V", "B", "LCtrl"],
-        # Right Hand & Right Thumbs
-        ["Y", "U", "I", "O", "P", "Enter"],
-        ["H", "J", "K", "L", "Semicolon", "Backspace"],
-        ["N", "M", "Comma", "Dot", "Slash", "LAlt"]
+        ["Y", "U", "I", "O", "P", "LT(1, Space)"],
+        ["H", "J", "K", "L", "Semicolon", "MT(Enter, LAlt)"],
+        ["N", "M", "LeftBracket", "RightBracket", "Slash", "Backspace"]
     ],
-    
-    # ================= LAYER 1: Empty =================
+
+    # ================= LAYER 1: Numbers, Nav, BT =================
     [
-        ["_", "_", "_", "_", "_", "_"],
-        ["_", "_", "_", "_", "_", "_"],
-        ["_", "_", "_", "_", "_", "_"],
-        ["_", "_", "_", "_", "_", "_"],
-        ["_", "_", "_", "_", "_", "_"],
-        ["_", "_", "_", "_", "_", "_"]
+        ["Kc1", "Kc2", "Kc3", "Kc4", "Kc5", "_"],
+        ["Tab", "Equal", "Minus", "Quote", "Backslash", "_"],
+        ["Grave", "No", "No", "No", "No", "_"],
+        ["Kc6", "Kc7", "Kc8", "Kc9", "Kc0", "_"],
+        ["PageUp", "Left", "Up", "Down", "Right", "_"],
+        ["PageDown", "No", "No", "Comma", "Dot", "Delete"]
     ],
 
     # ================= LAYER 2: Empty =================
@@ -63,6 +61,12 @@ keymap = [
         ["_", "_", "_", "_", "_", "_"]
     ]
 ]
+
+[behavior.morse]
+prior_idle_time_ms = 120
+
+[behavior.morse.default_profile]
+hold_timeout_ms = 230
 
 [ble]
 enabled = true
