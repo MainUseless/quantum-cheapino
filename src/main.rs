@@ -190,17 +190,6 @@ async fn main(_s: ::embassy_executor::Spawner) {
     .await;
 }
 
-/// Busy-wait delay in milliseconds using a volatile loop.
-/// Tuned for 80MHz ESP32-C3 (~4 cycles per iteration).
-#[inline(never)]
-fn busy_wait_ms(ms: u32) {
-    const ITERS_PER_MS: u32 = 20_000; // 80MHz / ~4 cycles per loop iteration
-    let total = ms * ITERS_PER_MS;
-    for _ in 0..total {
-        unsafe { core::ptr::read_volatile(&0u8) };
-    }
-}
-
 /// Bidirectional matrix scanner for Cheapino
 async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
     use ::rmk::debounce::DebouncerTrait;
@@ -252,7 +241,7 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
             }
         }
 
-        // Throttle to ~1000Hz scan rate using busy-wait (no embassy-time needed)
-        busy_wait_ms(1);
+        // Async sleep — CPU enters WFI (wait-for-interrupt), ~1-2mA during wait
+        ::embassy_time::Timer::after_millis(1).await;
     }
 }

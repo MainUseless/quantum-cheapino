@@ -55,6 +55,8 @@ jobs:
               t = re.sub(r'(features\s*=\s*\[)', r'\1\"vial_lock\", ', t, count=1)
           with open('rmk/Cargo.toml', 'w') as f: f.write(t)
           "
+          # Add embassy-time matching rmk's version for async sleep
+          cd rmk && cargo add embassy-time@0.5 && cd ..
           cat rmk/Cargo.toml
 
       - name: Compile Custom Firmware
