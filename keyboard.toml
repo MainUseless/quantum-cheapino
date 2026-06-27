@@ -63,8 +63,8 @@ keymap = [
 ]
 
 [behavior.morse]
-prior_idle_time = 120
-hold_timeout = 230
+prior_idle_time = "120ms"
+hold_timeout = "230ms"
 
 [ble]
 enabled = true
