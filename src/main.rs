@@ -191,7 +191,7 @@ async fn main(_s: ::embassy_executor::Spawner) {
 }
 
 /// Bidirectional matrix scanner for Cheapino with adaptive scan rate:
-/// - Active:    200Hz (5ms)  — typing detected
+/// - Active:    500Hz (2ms)  — typing detected
 /// - Idle:       20Hz (50ms) — 30s no activity
 /// - Deep idle:   2Hz (500ms) — 10 min no activity
 async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
@@ -258,9 +258,9 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
         }
 
         // Adaptive sleep — CPU enters WFI during wait
-        let sleep_ms = if idle_scans < 6_000 {
-            5   // Active: 200Hz (first 30s at 200 scans/s)
-        } else if idle_scans < 18_000 {
+        let sleep_ms = if idle_scans < 15_000 {
+            2   // Active: 500Hz (first 30s at 500 scans/s)
+        } else if idle_scans < 27_000 {
             50  // Idle: 20Hz (30s–10min, 12000 scans at 20/s = 10min)
         } else {
             500 // Deep idle: 2Hz (after 10 min)
