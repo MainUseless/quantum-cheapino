@@ -21,7 +21,7 @@ fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_L
     const TRNS: KeyAction = KeyAction::Transparent;
     const NO: KeyAction = KeyAction::No;
     let k = |kc| KeyAction::Single(Action::Key(kc));
-    let mt = |tap_kc, hold_kc| KeyAction::TapHold(
+    let mt = |tap_kc: KeyCode, hold_kc: KeyCode| KeyAction::TapHold(
         Action::Key(tap_kc), Action::Modifier(hold_kc.into()), MorseProfile::default(),
     );
     let lt = |layer, tap_kc| KeyAction::TapHold(
@@ -41,7 +41,7 @@ fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_L
         [
             [k(Kc1),      k(Kc2),    k(Kc3),    k(Kc4),    k(Kc5),      TRNS],
             [k(Tab),      k(Equal),  k(Minus),  k(Quote),  k(Backslash), TRNS],
-            [k(Grave),    NO,        KeyAction::Single(Action::User(0)), KeyAction::Single(Action::User(1)), KeyAction::Single(Action::User(2)), TRNS],
+            [k(Grave),    NO,        NO,        NO,        NO,        TRNS],
             [k(Kc6),      k(Kc7),    k(Kc8),    k(Kc9),    k(Kc0),      TRNS],
             [k(PageUp),   k(Left),   k(Up),     k(Down),   k(Right),     TRNS],
             [k(PageDown), NO,        NO,        k(Comma),  k(Dot),       k(Delete)],
@@ -194,7 +194,7 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
 
     let mut debouncer = ::rmk::debounce::default_debouncer::DefaultDebouncer::<ROW, COL>::new();
     let mut key_state = [[::rmk::matrix::KeyState::new(); COL]; ROW];
-    let mut last_activity = ::rmk::embassy_time::Instant::now();
+    let mut last_activity = ::embassy_time::Instant::now();
     let mut idle = false;
 
     loop {
@@ -249,7 +249,7 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
 
         // Track activity for idle detection
         if any_pressed {
-            last_activity = ::rmk::embassy_time::Instant::now();
+            last_activity = ::embassy_time::Instant::now();
             idle = false;
         } else if !idle && last_activity.elapsed().as_millis() > IDLE_TIMEOUT_MS {
             idle = true;
@@ -257,9 +257,9 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
 
         // Idle: scan at 10Hz. Active: scan at 1000Hz.
         if idle {
-            ::rmk::embassy_time::Timer::after_millis(IDLE_SCAN_INTERVAL_MS).await;
+            ::embassy_time::Timer::after_millis(IDLE_SCAN_INTERVAL_MS).await;
         } else {
-            ::rmk::embassy_time::Timer::after_millis(1).await;
+            ::embassy_time::Timer::after_millis(1).await;
         }
     }
 }
