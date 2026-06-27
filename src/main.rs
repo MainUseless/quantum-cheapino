@@ -17,7 +17,7 @@ const NUM_LAYER: usize = 4;
 // Default keymap from quantum cheapino.vil
 fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_LAYER] {
     use ::rmk::types::action::{Action, KeyAction, MorseProfile};
-    use ::rmk::types::keycode::KeyCode::*;
+    use ::rmk::types::keycode::KeyCode::{self, *};
     const TRNS: KeyAction = KeyAction::Transparent;
     const NO: KeyAction = KeyAction::No;
     let k = |kc| KeyAction::Single(Action::Key(kc));
