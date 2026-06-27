@@ -22,7 +22,7 @@ fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_L
     const NO: KeyAction = KeyAction::No;
     let k = |kc| KeyAction::Single(Action::Key(kc));
     let mt = |tap_kc: KeyCode, hold_kc: KeyCode| KeyAction::TapHold(
-        Action::Key(tap_kc), Action::Modifier(hold_kc.into()), MorseProfile::default(),
+        Action::Key(tap_kc), Action::Key(hold_kc), MorseProfile::default(),
     );
     let lt = |layer, tap_kc| KeyAction::TapHold(
         Action::Key(tap_kc), Action::LayerOn(layer), MorseProfile::default(),
