@@ -90,6 +90,13 @@ async fn main(_s: ::embassy_executor::Spawner) {
         ::esp_hal::Config::default()
             .with_cpu_clock(::esp_hal::clock::CpuClock::_80MHz),
     );
+    // Disable brown-out detector — BLE current spikes cause voltage sag on battery
+    unsafe {
+        let rtc_brown_out_reg = 0x600080D4 as *mut u32;
+        let val = core::ptr::read_volatile(rtc_brown_out_reg);
+        core::ptr::write_volatile(rtc_brown_out_reg, val & !(1 << 30));
+    }
+
     ::esp_alloc::heap_allocator!(size: 72 * 1024);
     let timg0 = ::esp_hal::timer::timg::TimerGroup::new(p.TIMG0);
     let software_interrupt =
