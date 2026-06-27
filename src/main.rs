@@ -190,14 +190,20 @@ async fn main(_s: ::embassy_executor::Spawner) {
     .await;
 }
 
-/// Bidirectional matrix scanner for Cheapino
+/// Bidirectional matrix scanner for Cheapino with adaptive scan rate:
+/// - Active:    200Hz (5ms)  — typing detected
+/// - Idle:       20Hz (50ms) — 30s no activity
+/// - Deep idle:   2Hz (500ms) — 10 min no activity
 async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
     use ::rmk::debounce::DebouncerTrait;
 
     let mut debouncer = ::rmk::debounce::default_debouncer::DefaultDebouncer::<ROW, COL>::new();
     let mut key_state = [[::rmk::matrix::KeyState::new(); COL]; ROW];
+    let mut idle_scans: u32 = 0;
 
     loop {
+        let mut any_pressed = false;
+
         for row in 0..ROW {
             for col in 0..COL {
                 let (out_idx, in_idx) = SCAN_MAP[row][col];
@@ -221,6 +227,10 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
                 );
                 pins[out_idx].set_input_enable(true);
 
+                if pressed {
+                    any_pressed = true;
+                }
+
                 // Debounce
                 let debounce_state = debouncer.detect_change_with_debounce(
                     row,
@@ -241,7 +251,20 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
             }
         }
 
-        // Async sleep — CPU enters WFI (wait-for-interrupt), ~1-2mA during wait
-        ::embassy_time::Timer::after_millis(1).await;
+        if any_pressed {
+            idle_scans = 0;
+        } else {
+            idle_scans = idle_scans.saturating_add(1);
+        }
+
+        // Adaptive sleep — CPU enters WFI during wait
+        let sleep_ms = if idle_scans < 6_000 {
+            5   // Active: 200Hz (first 30s at 200 scans/s)
+        } else if idle_scans < 18_000 {
+            50  // Idle: 20Hz (30s–10min, 12000 scans at 20/s = 10min)
+        } else {
+            500 // Deep idle: 2Hz (after 10 min)
+        };
+        ::embassy_time::Timer::after_millis(sleep_ms).await;
     }
 }
