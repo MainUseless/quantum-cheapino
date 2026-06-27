@@ -190,6 +190,23 @@ async fn main(_s: ::embassy_executor::Spawner) {
     .await;
 }
 
+/// Busy-wait delay in milliseconds using RISC-V cycle counter.
+/// At 80MHz, 1ms = 80_000 cycles.
+#[inline(never)]
+fn busy_wait_ms(ms: u32) {
+    const CYCLES_PER_MS: u32 = 80_000;
+    let total = ms * CYCLES_PER_MS;
+    let start: u32;
+    unsafe { core::arch::asm!("csrr {}, mcycle", out(reg) start) };
+    loop {
+        let now: u32;
+        unsafe { core::arch::asm!("csrr {}, mcycle", out(reg) now) };
+        if now.wrapping_sub(start) >= total {
+            break;
+        }
+    }
+}
+
 /// Bidirectional matrix scanner for Cheapino
 async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
     use ::rmk::debounce::DebouncerTrait;
@@ -241,8 +258,7 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
             }
         }
 
-        // Yield between scan cycles — 36 yields per cycle (one per key) already
-        // pace the loop. This extra yield ensures other tasks get CPU time.
-        ::rmk::embassy_futures::yield_now().await;
+        // Throttle to ~1000Hz scan rate using busy-wait (no embassy-time needed)
+        busy_wait_ms(1);
     }
 }
