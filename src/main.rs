@@ -190,48 +190,6 @@ async fn main(_s: ::embassy_executor::Spawner) {
     .await;
 }
 
-// Output pins driven LOW for quick-detect (covers both halves)
-const WAKE_OUT_PINS: [usize; 6] = [3, 4, 5, 6, 7, 8];
-// Input pins checked for LOW = key pressed
-const WAKE_IN_PINS: [usize; 6] = [0, 1, 2, 9, 10, 11];
-
-/// Quick-detect: drive output pins LOW, check if any input is LOW.
-/// 6 checks instead of 36 — much lighter than full scan.
-fn quick_detect_any_pressed(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> bool {
-    let pull_up = ::esp_hal::gpio::InputConfig::default()
-        .with_pull(::esp_hal::gpio::Pull::Up);
-
-    // Drive output pins LOW
-    for &idx in &WAKE_OUT_PINS {
-        pins[idx].set_input_enable(false);
-        pins[idx].set_low();
-        pins[idx].set_output_enable(true);
-    }
-
-    // Small settle delay (volatile reads as NOP)
-    for _ in 0..100 {
-        unsafe { core::ptr::read_volatile(&0u8) };
-    }
-
-    // Check input pins
-    let mut pressed = false;
-    for &idx in &WAKE_IN_PINS {
-        if pins[idx].is_low() {
-            pressed = true;
-            break;
-        }
-    }
-
-    // Restore output pins to input with pull-up
-    for &idx in &WAKE_OUT_PINS {
-        pins[idx].set_output_enable(false);
-        pins[idx].apply_input_config(&pull_up);
-        pins[idx].set_input_enable(true);
-    }
-
-    pressed
-}
-
 /// Full matrix scan — reads all 36 keys with debouncing.
 async fn full_scan(
     pins: &mut [::esp_hal::gpio::Flex<'_>; 12],
@@ -280,28 +238,67 @@ async fn full_scan(
     any_pressed
 }
 
-/// Bidirectional matrix scanner with interrupt-style idle:
+/// True interrupt-based sleep. CPU fully sleeps until a key is pressed.
+///
+/// Drives col pins (6-11) LOW, waits for falling edge on any row pin (0-5).
+/// Covers 18 of 36 keys (Q,E,T,A,D,G,Z,C,B on left + Y,I,P,H,K,;,N,comma,/ on right).
+/// Any of these keys will instantly wake the keyboard.
+async fn interrupt_sleep(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) {
+    let pull_up = ::esp_hal::gpio::InputConfig::default()
+        .with_pull(::esp_hal::gpio::Pull::Up);
+
+    // Split array: rows (0-5) for listening, cols (6-11) for driving LOW
+    let (rows, cols) = pins.split_at_mut(6);
+
+    // Drive all col pins LOW — any key press pulls a row pin LOW
+    for c in cols.iter_mut() {
+        c.set_input_enable(false);
+        c.set_low();
+        c.set_output_enable(true);
+    }
+
+    // Split rows into individual pins for independent async borrows
+    let (r0, rest) = rows.split_at_mut(1);
+    let (r1, rest) = rest.split_at_mut(1);
+    let (r2, rest) = rest.split_at_mut(1);
+    let (r3, rest) = rest.split_at_mut(1);
+    let (r4, r5) = rest.split_at_mut(1);
+
+    // Wait for falling edge on ANY row pin — CPU sleeps via WFI, ~5µA draw
+    use ::rmk::embassy_futures::select::select;
+    select(
+        select(
+            select(r0[0].wait_for_falling_edge(), r1[0].wait_for_falling_edge()),
+            select(r2[0].wait_for_falling_edge(), r3[0].wait_for_falling_edge()),
+        ),
+        select(r4[0].wait_for_falling_edge(), r5[0].wait_for_falling_edge()),
+    )
+    .await;
+
+    // Restore all col pins to input with pull-up
+    for c in cols.iter_mut() {
+        c.set_output_enable(false);
+        c.apply_input_config(&pull_up);
+        c.set_input_enable(true);
+    }
+}
+
+/// Bidirectional matrix scanner with true interrupt-based deep idle:
 /// - Active:    500Hz full scan — typing detected
 /// - Idle:       20Hz full scan — 30s no activity
-/// - Deep idle: quick-detect only every 50ms, full scan on detect
+/// - Deep idle: GPIO interrupt sleep — CPU ~5µA until keypress
 async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
     let mut debouncer = ::rmk::debounce::default_debouncer::DefaultDebouncer::<ROW, COL>::new();
     let mut key_state = [[::rmk::matrix::KeyState::new(); COL]; ROW];
     let mut idle_scans: u32 = 0;
 
     loop {
-        let sleep_ms;
-
         if idle_scans >= 27_000 {
-            // Deep idle: lightweight quick-detect only
-            if quick_detect_any_pressed(pins) {
-                // Key detected — do full scan and go active
-                full_scan(pins, &mut debouncer, &mut key_state).await;
-                idle_scans = 0;
-                sleep_ms = 2;
-            } else {
-                sleep_ms = 50; // Check 20 times/sec with minimal CPU
-            }
+            // Deep idle: true interrupt sleep — CPU draws ~5µA
+            interrupt_sleep(pins).await;
+            // Woke up from keypress — full scan immediately
+            full_scan(pins, &mut debouncer, &mut key_state).await;
+            idle_scans = 0;
         } else {
             // Active / light idle: full matrix scan
             let any_pressed = full_scan(pins, &mut debouncer, &mut key_state).await;
@@ -312,13 +309,12 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
                 idle_scans = idle_scans.saturating_add(1);
             }
 
-            sleep_ms = if idle_scans < 15_000 {
+            let sleep_ms = if idle_scans < 15_000 {
                 2   // Active: 500Hz
             } else {
                 50  // Idle: 20Hz (30s–~10min)
             };
+            ::embassy_time::Timer::after_millis(sleep_ms).await;
         }
-
-        ::embassy_time::Timer::after_millis(sleep_ms).await;
     }
 }
