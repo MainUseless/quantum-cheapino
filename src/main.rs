@@ -30,21 +30,21 @@ fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_L
     [
         // Layer 0: Base
         [
-            [k(Q),    k(W),     k(E),          k(R),     k(T),         mt(Escape, LShift)],
-            [k(A),    k(S),     k(D),          k(F),     lt(1, G),     k(LCtrl)],
-            [k(Z),    k(X),     k(C),          k(V),     k(B),         k(LCtrl)],
-            [k(Y),    k(U),     k(I),          k(O),     k(P),         lt(1, Space)],
+            [k(Q),    k(W),     k(E),          k(R),     k(T),          mt(Escape, LShift)],
+            [k(A),    k(S),     k(D),          k(F),     lt(1, G),      k(LCtrl)],
+            [k(Z),    k(X),     k(C),          k(V),     k(B),          k(LCtrl)],
+            [k(Y),    k(U),     k(I),          k(O),     k(P),          lt(1, Space)],
             [k(H),    k(J),     k(K),          k(L),     k(Semicolon), mt(Enter, LAlt)],
             [k(N),    k(M),     k(LeftBracket), k(RightBracket), k(Slash), k(Backspace)],
         ],
         // Layer 1: Numbers, Navigation, BT
         [
-            [k(Kc1),      k(Kc2),    k(Kc3),    k(Kc4),    k(Kc5),      TRNS],
+            [k(Kc1),      k(Kc2),    k(Kc3),    k(Kc4),    k(Kc5),       TRNS],
             [k(Tab),      k(Equal),  k(Minus),  k(Quote),  k(Backslash), TRNS],
-            [k(Grave),    NO,        NO,        NO,        NO,        TRNS],
-            [k(Kc6),      k(Kc7),    k(Kc8),    k(Kc9),    k(Kc0),      TRNS],
-            [k(PageUp),   k(Left),   k(Up),     k(Down),   k(Right),     TRNS],
-            [k(PageDown), NO,        NO,        k(Comma),  k(Dot),       k(Delete)],
+            [k(Grave),    NO,        NO,        NO,        NO,         TRNS],
+            [k(Kc6),      k(Kc7),    k(Kc8),    k(Kc9),    k(Kc0),       TRNS],
+            [k(PageUp),   k(Left),   k(Up),     k(Down),   k(Right),      TRNS],
+            [k(PageDown), NO,        NO,        k(Comma),  k(Dot),        k(Delete)],
         ],
         // Layers 2-3: Transparent
         [[TRNS; COL]; ROW],
@@ -52,21 +52,7 @@ fn get_default_keymap() -> [[[::rmk::types::action::KeyAction; COL]; ROW]; NUM_L
     ]
 }
 
-// =============================================================================
-// Cheapino bidirectional matrix scan map
-// =============================================================================
-//
-// Pin index assignments (12 pins total):
-//   0: GPIO4  (row0)     6: GPIO0  (col0)
-//   1: GPIO5  (row1)     7: GPIO1  (col1)
-//   2: GPIO6  (row2)     8: GPIO3  (col2)
-//   3: GPIO2  (row3)     9: GPIO7  (col3)
-//   4: GPIO8  (row4)    10: GPIO10 (col4)
-//   5: GPIO9  (row5)    11: GPIO20 (col5)
-//
-// Each entry: (out_pin_idx, in_pin_idx)
-// Scanning: out drives HIGH, in reads (pull-down) — if HIGH, key pressed
-
+// Entry structure: (out_pin_idx, in_pin_idx)
 const SCAN_MAP: [[(usize, usize); COL]; ROW] = [
     // Row 0 (left): Q  W  E  R  T  Space
     [(11, 3), (3, 10), (10, 3), (3, 9), (9, 3), (5, 11)],
@@ -84,13 +70,13 @@ const SCAN_MAP: [[(usize, usize); COL]; ROW] = [
 
 #[esp_rtos::main]
 async fn main(_s: ::embassy_executor::Spawner) {
-    // ---- Chip init (matches rmk macro generated code for esp32c3 BLE) ----
     ::esp_println::logger::init_logger_from_env();
     let p = ::esp_hal::init(
         ::esp_hal::Config::default()
             .with_cpu_clock(::esp_hal::clock::CpuClock::_80MHz),
     );
-    // Disable brown-out detector — BLE current spikes cause voltage sag on battery
+
+    // Disable brown-out detector
     unsafe {
         let rtc_brown_out_reg = 0x600080D4 as *mut u32;
         let val = core::ptr::read_volatile(rtc_brown_out_reg);
@@ -155,42 +141,43 @@ async fn main(_s: ::embassy_executor::Spawner) {
     let mut keyboard = ::rmk::keyboard::Keyboard::new(&keymap);
 
     // ---- Flex pins for bidirectional scanning ----
-    let mut pins: [::esp_hal::gpio::Flex; 12] = [
-        ::esp_hal::gpio::Flex::new(p.GPIO4),  // 0: row0
-        ::esp_hal::gpio::Flex::new(p.GPIO5),  // 1: row1
-        ::esp_hal::gpio::Flex::new(p.GPIO6),  // 2: row2
-        ::esp_hal::gpio::Flex::new(p.GPIO2),  // 3: row3
-        ::esp_hal::gpio::Flex::new(p.GPIO8),  // 4: row4
-        ::esp_hal::gpio::Flex::new(p.GPIO9),  // 5: row5
-        ::esp_hal::gpio::Flex::new(p.GPIO0),  // 6: col0
-        ::esp_hal::gpio::Flex::new(p.GPIO1),  // 7: col1
-        ::esp_hal::gpio::Flex::new(p.GPIO3),  // 8: col2
-        ::esp_hal::gpio::Flex::new(p.GPIO7),  // 9: col3
-        ::esp_hal::gpio::Flex::new(p.GPIO10), // 10: col4
-        ::esp_hal::gpio::Flex::new(p.GPIO20), // 11: col5
+    let pins: [::esp_hal::gpio::Flex; 12] = [
+        ::esp_hal::gpio::Flex::new(p.GPIO4),  // 0
+        ::esp_hal::gpio::Flex::new(p.GPIO5),  // 1
+        ::esp_hal::gpio::Flex::new(p.GPIO6),  // 2
+        ::esp_hal::gpio::Flex::new(p.GPIO2),  // 3
+        ::esp_hal::gpio::Flex::new(p.GPIO8),  // 4
+        ::esp_hal::gpio::Flex::new(p.GPIO9),  // 5
+        ::esp_hal::gpio::Flex::new(p.GPIO0),  // 6
+        ::esp_hal::gpio::Flex::new(p.GPIO1),  // 7
+        ::esp_hal::gpio::Flex::new(p.GPIO3),  // 8
+        ::esp_hal::gpio::Flex::new(p.GPIO7),  // 9
+        ::esp_hal::gpio::Flex::new(p.GPIO10), // 10
+        ::esp_hal::gpio::Flex::new(p.GPIO20), // 11
     ];
 
-    // Init all pins as inputs with pull-up (active LOW scanning, matching Cheapino QMK)
-    for pin in pins.iter_mut() {
-        pin.set_output_enable(false);
-        pin.apply_input_config(
-            &::esp_hal::gpio::InputConfig::default()
-                .with_pull(::esp_hal::gpio::Pull::Up),
-        );
-        pin.set_input_enable(true);
-    }
+    // Safely leak pin block array for static background executor thread access
+    let static_pins = ::core::cell::UnsafeCell::new(pins);
+    let pins_ref = unsafe { &mut *static_pins.get() };
 
-    // ---- Run all tasks concurrently ----
+    // Spawn the scanning engine as an independent background task 
+    _s.spawn(scanner_task(pins_ref)).unwrap();
+
+    // Run core RMK system loops concurrently without thread blocking starvation
     use ::rmk::input_device::Runnable;
-    ::rmk::embassy_futures::join::join3(
-        bidirectional_scan(&mut pins),
+    ::rmk::embassy_futures::join::join(
         keyboard.run(),
         ::rmk::run_rmk(&keymap, &stack, &mut storage, rmk_config),
     )
     .await;
 }
 
-/// Full matrix scan — reads all 36 keys with debouncing.
+#[embassy_executor::task]
+async fn scanner_task(pins: &'static mut [::esp_hal::gpio::Flex<'static>; 12]) {
+    bidirectional_scan(pins).await;
+}
+
+/// Safe open-drain full matrix scan — fixes GPIO short circuit heating issues
 async fn full_scan(
     pins: &mut [::esp_hal::gpio::Flex<'_>; 12],
     debouncer: &mut ::rmk::debounce::default_debouncer::DefaultDebouncer<ROW, COL>,
@@ -199,24 +186,38 @@ async fn full_scan(
     use ::rmk::debounce::DebouncerTrait;
     let mut any_pressed = false;
 
+    // Isolate ALL pins to High-Impedance (Hi-Z) input floating states initially
+    for pin in pins.iter_mut() {
+        pin.set_output_enable(false);
+        pin.apply_input_config(&::esp_hal::gpio::InputConfig::default().with_pull(::esp_hal::gpio::Pull::None));
+        pin.set_input_enable(true);
+    }
+
     for row in 0..ROW {
         for col in 0..COL {
             let (out_idx, in_idx) = SCAN_MAP[row][col];
+            if out_idx == in_idx { continue; }
 
+            // Enable internal pull-up ONLY on the targeted target input line
+            pins[in_idx].apply_input_config(
+                &::esp_hal::gpio::InputConfig::default().with_pull(::esp_hal::gpio::Pull::Up),
+            );
+
+            // Drive target output line down to LOW logic state
             pins[out_idx].set_input_enable(false);
             pins[out_idx].set_low();
             pins[out_idx].set_output_enable(true);
 
-            ::rmk::embassy_futures::yield_now().await;
+            // Let line capacities settle down safely
+            ::embassy_time::Timer::after_micros(10).await;
 
             let pressed = pins[in_idx].is_low();
 
+            // Reset pins back to unpulled floating inputs immediately
             pins[out_idx].set_output_enable(false);
-            pins[out_idx].apply_input_config(
-                &::esp_hal::gpio::InputConfig::default()
-                    .with_pull(::esp_hal::gpio::Pull::Up),
-            );
+            pins[out_idx].apply_input_config(&::esp_hal::gpio::InputConfig::default().with_pull(::esp_hal::gpio::Pull::None));
             pins[out_idx].set_input_enable(true);
+            pins[in_idx].apply_input_config(&::esp_hal::gpio::InputConfig::default().with_pull(::esp_hal::gpio::Pull::None));
 
             if pressed {
                 any_pressed = true;
@@ -238,33 +239,22 @@ async fn full_scan(
     any_pressed
 }
 
-/// True interrupt-based sleep. CPU fully sleeps until a key is pressed.
-///
-/// Drives col pins (6-11) LOW, waits for falling edge on any row pin (0-5).
-/// Covers 18 of 36 keys (Q,E,T,A,D,G,Z,C,B on left + Y,I,P,H,K,;,N,comma,/ on right).
-/// Any of these keys will instantly wake the keyboard.
 async fn interrupt_sleep(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) {
-    let pull_up = ::esp_hal::gpio::InputConfig::default()
-        .with_pull(::esp_hal::gpio::Pull::Up);
-
-    // Split array: rows (0-5) for listening, cols (6-11) for driving LOW
+    let pull_up = ::esp_hal::gpio::InputConfig::default().with_pull(::esp_hal::gpio::Pull::Up);
     let (rows, cols) = pins.split_at_mut(6);
 
-    // Drive all col pins LOW — any key press pulls a row pin LOW
     for c in cols.iter_mut() {
         c.set_input_enable(false);
         c.set_low();
         c.set_output_enable(true);
     }
 
-    // Split rows into individual pins for independent async borrows
     let (r0, rest) = rows.split_at_mut(1);
     let (r1, rest) = rest.split_at_mut(1);
     let (r2, rest) = rest.split_at_mut(1);
     let (r3, rest) = rest.split_at_mut(1);
     let (r4, r5) = rest.split_at_mut(1);
 
-    // Wait for falling edge on ANY row pin — CPU sleeps via WFI, ~5µA draw
     use ::rmk::embassy_futures::select::select;
     select(
         select(
@@ -275,7 +265,6 @@ async fn interrupt_sleep(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) {
     )
     .await;
 
-    // Restore all col pins to input with pull-up
     for c in cols.iter_mut() {
         c.set_output_enable(false);
         c.apply_input_config(&pull_up);
@@ -283,24 +272,18 @@ async fn interrupt_sleep(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) {
     }
 }
 
-/// Bidirectional matrix scanner with true interrupt-based deep idle:
-/// - Active:    500Hz full scan — typing detected
-/// - Idle:       20Hz full scan — 30s no activity
-/// - Deep idle: GPIO interrupt sleep — CPU ~5µA until keypress
 async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
     let mut debouncer = ::rmk::debounce::default_debouncer::DefaultDebouncer::<ROW, COL>::new();
     let mut key_state = [[::rmk::matrix::KeyState::new(); COL]; ROW];
     let mut idle_scans: u32 = 0;
 
     loop {
-        if idle_scans >= 27_000 {
-            // Deep idle: true interrupt sleep — CPU draws ~5µA
+        // Drop into hardware sleep after 3 seconds of desk inactivity (~1500 scans)
+        if idle_scans >= 1500 {
             interrupt_sleep(pins).await;
-            // Woke up from keypress — full scan immediately
             full_scan(pins, &mut debouncer, &mut key_state).await;
             idle_scans = 0;
         } else {
-            // Active / light idle: full matrix scan
             let any_pressed = full_scan(pins, &mut debouncer, &mut key_state).await;
 
             if any_pressed {
@@ -309,10 +292,10 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
                 idle_scans = idle_scans.saturating_add(1);
             }
 
-            let sleep_ms = if idle_scans < 15_000 {
-                2   // Active: 500Hz
+            let sleep_ms = if idle_scans < 500 {
+                2   // Typing state: 500Hz
             } else {
-                50  // Idle: 20Hz (30s–~10min)
+                100 // Quiet idle state: Drop to 10Hz immediately to save massive battery!
             };
             ::embassy_time::Timer::after_millis(sleep_ms).await;
         }
