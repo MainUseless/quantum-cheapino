@@ -76,7 +76,7 @@ async fn main(_s: ::embassy_executor::Spawner) {
             .with_cpu_clock(::esp_hal::clock::CpuClock::_80MHz),
     );
 
-    // Disable brown-out detector
+    // Disable brown-out detector to handle battery current spikes safely
     unsafe {
         let rtc_brown_out_reg = 0x600080D4 as *mut u32;
         let val = core::ptr::read_volatile(rtc_brown_out_reg);
@@ -156,14 +156,15 @@ async fn main(_s: ::embassy_executor::Spawner) {
         ::esp_hal::gpio::Flex::new(p.GPIO20), // 11
     ];
 
-    // Safely leak pin block array for static background executor thread access
-    let static_pins = ::core::cell::UnsafeCell::new(pins);
-    let pins_ref = unsafe { &mut *static_pins.get() };
+    // Clean, static allocation for the background executor task
+    static PINS: ::static_cell::StaticCell<[::esp_hal::gpio::Flex<'static>; 12]> = 
+        ::static_cell::StaticCell::new();
+    let pins_ref = PINS.init(pins);
 
-    // Spawn the scanning engine as an independent background task 
+    // Spawn scanning runtime engine asynchronously onto background runner stack
     _s.spawn(scanner_task(pins_ref)).unwrap();
 
-    // Run core RMK system loops concurrently without thread blocking starvation
+    // Concurrently handle keyboard processing loop and active BLE system stack
     use ::rmk::input_device::Runnable;
     ::rmk::embassy_futures::join::join(
         keyboard.run(),
@@ -177,7 +178,7 @@ async fn scanner_task(pins: &'static mut [::esp_hal::gpio::Flex<'static>; 12]) {
     bidirectional_scan(pins).await;
 }
 
-/// Safe open-drain full matrix scan — fixes GPIO short circuit heating issues
+/// High-Impedance Safe Open-Drain matrix check. Prevents GPIO drive heating loops.
 async fn full_scan(
     pins: &mut [::esp_hal::gpio::Flex<'_>; 12],
     debouncer: &mut ::rmk::debounce::default_debouncer::DefaultDebouncer<ROW, COL>,
@@ -186,7 +187,7 @@ async fn full_scan(
     use ::rmk::debounce::DebouncerTrait;
     let mut any_pressed = false;
 
-    // Isolate ALL pins to High-Impedance (Hi-Z) input floating states initially
+    // Disconnect ALL pins to an completely unpulled floating Hi-Z input configuration
     for pin in pins.iter_mut() {
         pin.set_output_enable(false);
         pin.apply_input_config(&::esp_hal::gpio::InputConfig::default().with_pull(::esp_hal::gpio::Pull::None));
@@ -198,22 +199,22 @@ async fn full_scan(
             let (out_idx, in_idx) = SCAN_MAP[row][col];
             if out_idx == in_idx { continue; }
 
-            // Enable internal pull-up ONLY on the targeted target input line
+            // Turn on pull-up internal gate strictly on target line input point
             pins[in_idx].apply_input_config(
                 &::esp_hal::gpio::InputConfig::default().with_pull(::esp_hal::gpio::Pull::Up),
             );
 
-            // Drive target output line down to LOW logic state
+            // Active low scan segment configuration drive step
             pins[out_idx].set_input_enable(false);
             pins[out_idx].set_low();
             pins[out_idx].set_output_enable(true);
 
-            // Let line capacities settle down safely
+            // Give voltage capacitance a safe microsecond to settle down cleanly
             ::embassy_time::Timer::after_micros(10).await;
 
             let pressed = pins[in_idx].is_low();
 
-            // Reset pins back to unpulled floating inputs immediately
+            // Clear configuration immediately back to disconnected floating states
             pins[out_idx].set_output_enable(false);
             pins[out_idx].apply_input_config(&::esp_hal::gpio::InputConfig::default().with_pull(::esp_hal::gpio::Pull::None));
             pins[out_idx].set_input_enable(true);
@@ -278,7 +279,7 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
     let mut idle_scans: u32 = 0;
 
     loop {
-        // Drop into hardware sleep after 3 seconds of desk inactivity (~1500 scans)
+        // Drop into hardware deep sleep after 3 seconds of desk inactivity (~1500 scans)
         if idle_scans >= 1500 {
             interrupt_sleep(pins).await;
             full_scan(pins, &mut debouncer, &mut key_state).await;
@@ -295,7 +296,7 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
             let sleep_ms = if idle_scans < 500 {
                 2   // Typing state: 500Hz
             } else {
-                100 // Quiet idle state: Drop to 10Hz immediately to save massive battery!
+                100 // Quiet idle state: Drop to 10Hz immediately to save massive battery juice!
             };
             ::embassy_time::Timer::after_millis(sleep_ms).await;
         }
