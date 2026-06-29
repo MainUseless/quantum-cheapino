@@ -280,7 +280,8 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
 
     loop {
         // Drop into hardware deep sleep after 3 seconds of desk inactivity (~1500 scans)
-        if idle_scans >= 1500 {
+        if idle_scans >= 61_500 {
+            // 1500 active scans (3s) + 60000 idle scans at 100Hz (10min) = deep sleep
             interrupt_sleep(pins).await;
             full_scan(pins, &mut debouncer, &mut key_state).await;
             idle_scans = 0;
@@ -293,10 +294,10 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
                 idle_scans = idle_scans.saturating_add(1);
             }
 
-            let sleep_ms = if idle_scans < 500 {
-                2   // Typing state: 500Hz
+            let sleep_ms = if idle_scans < 1_500 {
+                2   // Active: 500Hz (first 3s)
             } else {
-                100 // Quiet idle state: Drop to 10Hz immediately to save massive battery juice!
+                10  // Idle: 100Hz — responsive enough for taps, 5x less power than active
             };
             ::embassy_time::Timer::after_millis(sleep_ms).await;
         }
