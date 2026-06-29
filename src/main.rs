@@ -297,7 +297,7 @@ async fn bidirectional_scan(pins: &mut [::esp_hal::gpio::Flex<'_>; 12]) -> ! {
             let sleep_ms = if idle_scans < 1_500 {
                 2   // Active: 500Hz (first 3s)
             } else {
-                10  // Idle: 100Hz — responsive enough for taps, 5x less power than active
+                20  // Idle: 50Hz — responsive enough for taps, much less CPU heat
             };
             ::embassy_time::Timer::after_millis(sleep_ms).await;
         }
